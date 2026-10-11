@@ -23,13 +23,13 @@ seconds_per_day = 24 * 60 * 60
 def orbital_period(altitude_km, planet_radius_km, mu_km3_s2):
     """Return the circular-orbit period in seconds."""
     if altitude_km <= 0 or planet_radius_km <= 0 or mu_km3_s2 <= 0:
-        raise ValueError("Altitude, Earth radius and gravitational parameter must be positive.")
+        raise ValueError("Altitude, radius and gravitational parameter must be positive.")
     orbit_radius_km = planet_radius_km + altitude_km
     return 2 * math.pi * math.sqrt(orbit_radius_km**3 / mu_km3_s2)
 
 
 def ground_track_speed(altitude_km, planet_radius_km, mu_km3_s2):
-    """Return the nadir ground-track speed in m/s, ignoring Earth's rotation."""
+    """Return the nadir ground-track speed in m/s, ignoring planets rotation."""
     period_s = orbital_period(altitude_km, planet_radius_km, mu_km3_s2)
     return 2 * math.pi * planet_radius_km * 1000 / period_s
 
@@ -54,8 +54,7 @@ def payload_data_rate(altitude_km, swath_width_angle_deg, pixel_size_arcmin,
     """Estimate raw bits/s while a nadir pushbroom camera is active.
 
     Assumes square angular pixels and one image row per along-track pixel.
-    Cross-track pixels are counted by angle, since ground footprints grow
-    toward the swath edges. No compression or packet/coding overhead is included.
+    Cross-track pixels are counted by angle, since ground footprints grow toward the swath edges. 
     """
     if bits_per_pixel <= 0:
         raise ValueError("Bits per pixel must be positive.")
@@ -97,7 +96,7 @@ def freespaceloss(distance, wavelength):    # return in dB
     return -20 * math.log10(4*math.pi()*distance/wavelength) 
 
 def pointing_angle_loss(frequency_ghz,offset_antenna_diameter_m, pointing_offset_deg):
-    # Return the combined pointing loss of one parabolic antennas in dB.
+    # Return the pointing loss of one parabolic antenna in dB.
     # This needs to be called twice.
     if frequency_ghz <= 0 or offset_antenna_diameter_m <= 0:
         raise ValueError("Frequency and both antenna diameters must be positive.")
