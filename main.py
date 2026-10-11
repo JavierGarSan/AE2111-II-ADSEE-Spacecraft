@@ -96,17 +96,14 @@ def antenna_gain(radiation_efficiency, antenna_diameter, wavelength): # return i
 def freespaceloss(distance, wavelength):    # return in dB
     return -20 * math.log10(4*math.pi()*distance/wavelength) 
 
-def pointing_angle_loss(frequency_ghz, aligned_antenna_diameter_m,
-                        offset_antenna_diameter_m, pointing_offset_deg):
+def pointing_angle_loss(frequency_ghz,offset_antenna_diameter_m, pointing_offset_deg):
     # Return the combined pointing loss of one parabolic antennas in dB.
     # This needs to be called twice.
-    if frequency_ghz <= 0 or aligned_antenna_diameter_m <= 0 or offset_antenna_diameter_m <= 0:
+    if frequency_ghz <= 0 or offset_antenna_diameter_m <= 0:
         raise ValueError("Frequency and both antenna diameters must be positive.")
-    aligned_half_power_angle_deg = 21 / (frequency_ghz * aligned_antenna_diameter_m)
     offset_half_power_angle_deg = 21 / (frequency_ghz * offset_antenna_diameter_m)
-    aligned_loss_db = -12 * (0 / aligned_half_power_angle_deg)**2
     offset_loss_db = -12 * (pointing_offset_deg / offset_half_power_angle_deg)**2
-    return aligned_loss_db + offset_loss_db
+    return  offset_loss_db
 
 #Assumptions - NOT IN FILE.
 c = 299792458 # m/s
