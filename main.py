@@ -19,6 +19,26 @@ earthRadius = 6371 # km
 earth_mu = 398600.435507 # km^3/s^2; https://ssd.jpl.nasa.gov/astro_par.html
 seconds_per_day = 24 * 60 * 60
 
+#Assumptions - NOT IN FILE.
+c = 299792458 # m/s
+k_b = 1.380649 * 10**(-23)
+signalnoise_ratio = 3 #dB
+
+
+# Parameters from missions to enter:
+required_uplink_dr = 10**8 # bit/s
+transmitter_P_sc = 150 # W
+transmitter_P_gs = 400 # W
+loss_factor_transmitter = 0.8 # -
+loss_factor_receiver = 0.7 # -
+downlink_f = 2.2 # GHz
+turnaround_ratio = 221/240 # -
+antenna_diameter_sc = 1 # m
+antenna_diameter_gc = 15 # m
+pointing_offset_angle = 0.12 # deg
+modulation_type = "uncoded"
+ber_required = 10**-6 # -
+
 
 def orbital_period(altitude_km, planet_radius_km, mu_km3_s2):
     """Return the circular-orbit period in seconds."""
@@ -104,35 +124,28 @@ def pointing_angle_loss(frequency_ghz,offset_antenna_diameter_m, pointing_offset
     offset_loss_db = -12 * (pointing_offset_deg / offset_half_power_angle_deg)**2
     return  offset_loss_db
 
-#Assumptions - NOT IN FILE.
-c = 299792458 # m/s
+def energy_per_bit(EIRP, free_space_loss, All_other_losses, G_over_T, bitrate): # input in dB
+    return EIRP - free_space_loss - All_other_losses + G_over_T - 10 * math.log10(k_b * bitrate)
 
-# Parameters from missions to enter:
-required_uplink_dr = 10**8 # bit/s
-transmitter_P_sc = 150 # W
-transmitter_P_gs = 400 # W
-loss_factor_transmitter = 0.8 # -
-loss_factor_receiver = 0.7 # -
-downlink_f = 2.2 # GHz
-turnaround_ratio = 221/240 # -
-antenna_diameter_sc = 1 # m
-antenna_diameter_gc = 15 # m
-pointing_offset_angle = 0.12 # deg
-modulation_type = "uncoded"
-ber_required = 10**-6 # -
+def distance_earth_orbit(satellite_altitude, minimum_elevation_angle):
+    global earthRadius
+    return earthRadius * (math.sqrt(((earthRadius + satellite_altitude)/earthRadius)**2 - math.cos(minimum_elevation_angle)**2) - math.sin(minimum_elevation_angle)
 
+def distance_other_orbit(orbit_altitude_orbiting_body, satellite_altitude, elongation_angle):
+    return 
 
 payload_dr = payload_data_rate(orbit_altitude, pl_swath_width_angle, pl_pixel_size, pl_bits_per_pixel, planet_radius_km=earthRadius, mu_km3_s2=earth_mu)
 data_generated_per_day = daily_data_generated(payload_dr, pl_duty_cycle)
 required_downlink_dr = required_downlink_rate(data_generated_per_day, pl_downlink_t)
 
+
 print(f"Payload data rate while active: {payload_dr:.3e} bit/s")
 print(f"Data generated per day: {data_generated_per_day:.3e} bits ({data_generated_per_day / 8 / 10**12:.3f} TB)")
 print(f"Required downlink data rate: {required_downlink_dr:.3e} bit/s")
 
-
-print(c/(downlink_f*10**9)/turnaround_ratio)
-transmitter_gain = antenna_gain(radiation_efficiency=1/loss_factor_transmitter, antenna_diameter=antenna_diameter_sc, wavelength=c/(downlink_f*10**9)/turnaround_ratio)
+wavelength_downlink = c/(downlink_f*10**9)
+transmitter_gain = antenna_gain(radiation_efficiency=1/loss_factor_transmitter, antenna_diameter=antenna_diameter_sc, wavelength=wavelength_downlink)
 print("transmitter_gain: ", transmitter_gain)
 eirp = n_dB(transmitter_P_sc * dB_n(transmitter_gain) / loss_factor_transmitter)
 print(f"eirp = {eirp}")
+
