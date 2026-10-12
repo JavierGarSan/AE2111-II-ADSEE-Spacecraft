@@ -113,7 +113,7 @@ def antenna_gain(radiation_efficiency, antenna_diameter, wavelength): # return i
 
 
 def freespaceloss(distance, wavelength):    # return in dB
-    return -20 * math.log10(4*math.pi()*distance/wavelength) 
+    return -20 * math.log10(4*math.pi*distance/wavelength) 
 
 def pointing_angle_loss(frequency_ghz,offset_antenna_diameter_m, pointing_offset_deg):
     # Return the pointing loss of one parabolic antenna in dB.
@@ -129,7 +129,7 @@ def energy_per_bit(EIRP, free_space_loss, All_other_losses, G_over_T, bitrate): 
 
 def distance_earth_orbit(satellite_altitude, minimum_elevation_angle):
     global earthRadius
-    return earthRadius * (math.sqrt(((earthRadius + satellite_altitude)/earthRadius)**2 - math.cos(minimum_elevation_angle)**2) - math.sin(minimum_elevation_angle)
+    return earthRadius * (math.sqrt(((earthRadius + satellite_altitude)/earthRadius)**2 - math.cos(minimum_elevation_angle)**2) - math.sin(minimum_elevation_angle))
 
 def distance_other_orbit(orbit_altitude_orbiting_body, satellite_altitude, elongation_angle):
     return 
@@ -138,14 +138,13 @@ payload_dr = payload_data_rate(orbit_altitude, pl_swath_width_angle, pl_pixel_si
 data_generated_per_day = daily_data_generated(payload_dr, pl_duty_cycle)
 required_downlink_dr = required_downlink_rate(data_generated_per_day, pl_downlink_t)
 
-
 print(f"Payload data rate while active: {payload_dr:.3e} bit/s")
 print(f"Data generated per day: {data_generated_per_day:.3e} bits ({data_generated_per_day / 8 / 10**12:.3f} TB)")
 print(f"Required downlink data rate: {required_downlink_dr:.3e} bit/s")
 
 wavelength_downlink = c/(downlink_f*10**9)
-transmitter_gain = antenna_gain(radiation_efficiency=1/loss_factor_transmitter, antenna_diameter=antenna_diameter_sc, wavelength=wavelength_downlink)
+transmitter_gain = antenna_gain(radiation_efficiency=loss_factor_transmitter, antenna_diameter=antenna_diameter_sc, wavelength=wavelength_downlink)
 print("transmitter_gain: ", transmitter_gain)
-eirp = n_dB(transmitter_P_sc * dB_n(transmitter_gain) / loss_factor_transmitter)
+eirp = n_dB(transmitter_P_sc * dB_n(transmitter_gain)* loss_factor_transmitter)
 print(f"eirp = {eirp}")
 
