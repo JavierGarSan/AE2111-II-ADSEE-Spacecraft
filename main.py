@@ -1,4 +1,5 @@
 import math
+from statistics import NormalDist
 
 print("Hello cruel world")
 
@@ -131,8 +132,101 @@ def distance_earth_orbit(satellite_altitude, minimum_elevation_angle):
     global earthRadius
     return earthRadius * (math.sqrt(((earthRadius + satellite_altitude)/earthRadius)**2 - math.cos(minimum_elevation_angle)**2) - math.sin(minimum_elevation_angle))
 
-def distance_other_orbit(orbit_altitude_orbiting_body, satellite_altitude, elongation_angle):
+def distance_other_orbit(orbit_altitude_orbiting_body, satellite_altitude, elongation_angle): #No reason for this.   
     return 
+
+def required_eb_n0(ber, coding):
+    """Required Eb/N0 per information bit, in dB, for 32-PSK."""
+
+    coding = coding.lower()
+    if coding not in ("uncoded", "coded", "ldpc"):
+        raise ValueError("Choose 'uncoded', 'coded', or 'ldpc'.")
+    if not math.isfinite(ber) or not 0 < ber <= 1e-3:
+        raise ValueError("Use a BER between 0 and 1e-3.")
+
+    bits_per_symbol = 5
+    q_inverse = -NormalDist().inv_cdf(
+        ber * bits_per_symbol / 2
+    )
+
+    eb_n0_linear = q_inverse**2 / (
+        2 * bits_per_symbol * math.sin(math.pi / 32)**2
+    )
+    required_db = 10 * math.log10(eb_n0_linear)
+
+    coding_gain_db = 0.0 if coding == "uncoded" else 10.0
+    return required_db - coding_gain_db
+
+def transmitted_bit_rate(information_rate_bps, coding="uncoded"):
+    if information_rate_bps < 0:
+        raise ValueError("Information rate must be nonnegative.")
+
+    coding = coding.lower()
+    if coding == "uncoded":
+        return information_rate_bps
+    if coding in ("coded", "ldpc"):
+        return information_rate_bps / (3 / 4)
+
+    raise ValueError("Choose 'uncoded', 'coded', or 'ldpc'.")
+
+def receiver_noise_and_gt(
+    antenna_gain_dbi,
+    antenna_noise_k,
+    receiver_noise_figure_db,
+    receiver_loss_factor=0.7,
+    cable_physical_k=290.0,
+    reference_k=290.0,
+):
+    """Calculate noise temperatures referred to the antenna terminals."""
+
+    values = (
+        antenna_gain_dbi, antenna_noise_k, receiver_noise_figure_db,
+        receiver_loss_factor, cable_physical_k, reference_k,
+    )
+    if not all(math.isfinite(value) for value in values):
+        raise ValueError("Inputs must be finite.")
+    if not 0 < receiver_loss_factor <= 1:
+        raise ValueError("Receiver loss factor must be in (0, 1].")
+    if antenna_noise_k < 0 or cable_physical_k < 0 or reference_k <= 0:
+        raise ValueError("Invalid temperature.")
+    if receiver_noise_figure_db < 0:
+        raise ValueError("Receiver noise figure must be nonnegative.")
+
+    noise_factor = 10 ** (receiver_noise_figure_db / 10)
+
+    # Receiver noise at the receiver's own input.
+    receiver_noise_k = reference_k * (noise_factor - 1)
+
+    # Refer cable and receiver noise back to the antenna terminals.
+    cable_noise_k = cable_physical_k * (1 / receiver_loss_factor - 1)
+    receiver_referred_k = receiver_noise_k / receiver_loss_factor
+
+    system_noise_k = (
+        antenna_noise_k + cable_noise_k + receiver_referred_k
+    )
+    if system_noise_k <= 0:
+        raise ValueError("System noise temperature must be positive.")
+
+    return {
+        "receiver_noise_k": receiver_noise_k,
+        "cable_noise_referred_k": cable_noise_k,
+        "receiver_noise_referred_k": receiver_referred_k,
+        "system_noise_k": system_noise_k,
+        "g_over_t_db_per_k": (
+            antenna_gain_dbi - 10 * math.log10(system_noise_k)
+        ),
+    }
+
+def link_margin(available_eb_n0_db, required_eb_n0_db):
+    """Return available minus required Eb/N0, in dB."""
+
+    if not all(
+        math.isfinite(value)
+        for value in (available_eb_n0_db, required_eb_n0_db)
+    ):
+        raise ValueError("Both Eb/N0 values must be finite.")
+
+    return available_eb_n0_db - required_eb_n0_db
 
 payload_dr = payload_data_rate(orbit_altitude, pl_swath_width_angle, pl_pixel_size, pl_bits_per_pixel, planet_radius_km=earthRadius, mu_km3_s2=earth_mu)
 data_generated_per_day = daily_data_generated(payload_dr, pl_duty_cycle)
