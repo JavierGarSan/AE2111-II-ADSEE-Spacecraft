@@ -217,6 +217,13 @@ def receiver_noise_and_gt(
         ),
     }
 
+def rain_attenuation_noise(frequency): #in dB, super simplified
+    if (frequency>(5*(10**9))) and frequency<(12*(10**9)):
+        return 2.86
+    elif (frequency<=(5*(10**9))):
+        return 0
+    raise ValueError("The frequency isnt represented the program (only bellow 12 GHz)")
+
 def link_margin(available_eb_n0_db, required_eb_n0_db):
     """Return available minus required Eb/N0, in dB."""
 
