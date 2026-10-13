@@ -104,6 +104,16 @@ def required_downlink_rate(daily_data_bits, downlink_hours_per_day):
 #                                                                            free space loss
 # Data Output: Packet Engine < Code Engine < Demodulator < Mixer < LNA     < ----/
 
+#Assumption: emin will always be 20º
+def atmospheric_attenuation_noise(frequency): #We assume minimum operating elevation of 20º
+    if frequency>10e9:
+        return 0.75 #dB
+    if frequency>5e9:
+        return 0.2 #dB
+    elif frequency>0:
+        return 0.15 #dB
+    raise ValueError("Frequency can't be negative")
+
 def n_dB(value):
     return 10 * math.log10(value/1)
 def dB_n(value):
@@ -111,7 +121,6 @@ def dB_n(value):
 
 def antenna_gain(radiation_efficiency, antenna_diameter, wavelength): # return in dB
     return 10 * math.log10(radiation_efficiency * (math.pi*antenna_diameter/wavelength)**2)
-
 
 def freespaceloss(distance, wavelength):    # return in dB
     return -20 * math.log10(4*math.pi*distance/wavelength) 
