@@ -1,4 +1,4 @@
-"""Run the local Earth-case dashboard: py dashboard.py."""
+"""Run the local spacecraft dashboard: py dashboard.py."""
 
 import argparse
 import json
@@ -7,7 +7,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from earth_model import CASE_PARAMETERS, DEFAULT_MODULATION, MODULATION_OPTIONS, calculate_earth
+from earth_model import (
+    CASE_PARAMETERS, DEFAULT_MODULATION, MODULATION_OPTIONS,
+    DEFAULT_PLANET, PLANET_OPTIONS, ENCODING_OPTIONS, calculate_scenario,
+    DEFAULT_TEMPLATE, MISSION_TEMPLATES,
+)
 
 
 WEB_DIRECTORY = Path(__file__).resolve().parent / "web"
@@ -41,6 +45,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 "parameters": CASE_PARAMETERS,
                 "modulations": MODULATION_OPTIONS,
                 "default_modulation": DEFAULT_MODULATION,
+                "planets": PLANET_OPTIONS,
+                "default_planet": DEFAULT_PLANET,
+                "encodings": ENCODING_OPTIONS,
+                "default_encoding": "uncoded",
+                "templates": MISSION_TEMPLATES,
+                "default_template": DEFAULT_TEMPLATE,
             })
         elif path in STATIC_FILES:
             filename, content_type = STATIC_FILES[path]
@@ -59,7 +69,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             parameters = json.loads(self.rfile.read(size))
             if not isinstance(parameters, dict):
                 raise ValueError("Parameters must be a JSON object.")
-            result = calculate_earth(parameters)
+            result = calculate_scenario(parameters)
         except (ValueError, TypeError, OverflowError) as error:
             self.send_json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
             return
@@ -67,12 +77,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Local spacecraft dashboard (Earth case only).")
+    parser = argparse.ArgumentParser(description="Local spacecraft dashboard with mission templates.")
     parser.add_argument("--port", type=int, default=8000, help="Local port (default: 8000).")
     args = parser.parse_args()
     server = ThreadingHTTPServer(("127.0.0.1", args.port), DashboardHandler)
     server.daemon_threads = True
-    print(f"Earth dashboard: http://127.0.0.1:{server.server_port}", flush=True)
+    print(f"Spacecraft dashboard: http://127.0.0.1:{server.server_port}", flush=True)
     print("Press Ctrl+C to stop.", flush=True)
     try:
         server.serve_forever()

@@ -3,31 +3,47 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Spacecraft homework - Earth dashboard</title>
+  <title>Spacecraft homework - Earth orbit</title>
   <link rel="stylesheet" href="/dashboard.css">
   <script src="/dashboard.js" defer></script>
 </head>
 <body>
   <main>
-    <h1>Spacecraft link budget</h1>
-    <p>AE2111-II homework tool / Earth case</p>
+    <div class="title-row">
+      <h1>Spacecraft link budget</h1>
+      <div class="selector-control template-control">
+        <label for="templates">Templates</label>
+        <select id="templates" disabled></select>
+      </div>
+    </div>
+    <p id="scenario-heading">AE2111-II homework tool / Earth orbit</p>
     <hr>
 
     <section aria-labelledby="input-heading">
       <div class="section-heading">
         <h2 id="input-heading">Table 1 inputs</h2>
-        <button type="button" id="reset" disabled>Reset Earth values</button>
+        <button type="button" id="reset" disabled>Reset inputs</button>
       </div>
-      <p class="help">Move a slider to recalculate. Fixed values are the red Earth cells in the assignment.</p>
+      <div class="selector-control planet-control">
+        <label for="planet">Orbiting body</label>
+        <select id="planet" aria-describedby="planet-help" disabled></select>
+        <span id="planet-help" class="selector-help">Changing the body keeps your current input values.</span>
+      </div>
+      <p class="help">Move a slider to recalculate. Use each lock button to lock or unlock its slider.</p>
       <div id="parameters" class="parameter-grid" aria-label="Earth case parameters"></div>
-      <p id="status" role="status" aria-live="polite">Loading Earth inputs...</p>
+      <p id="status" role="status" aria-live="polite">Loading inputs...</p>
       <p id="error" role="alert" hidden></p>
     </section>
 
-    <div class="modulation-control">
+    <div class="selector-control modulation-control">
       <label for="modulation">Modulation</label>
       <select id="modulation" aria-describedby="modulation-help" disabled></select>
-      <span id="modulation-help">Applies to uplink and downlink. Channel coding stays uncoded.</span>
+      <span id="modulation-help" class="selector-help">Applies to uplink and downlink.</span>
+    </div>
+    <div class="selector-control encoding-control">
+      <label for="encoding">Encoding</label>
+      <select id="encoding" aria-describedby="encoding-help" disabled></select>
+      <span id="encoding-help" class="selector-help">Applies to both links. LDPC uses the model's rate 3/4 and 10 dB coding gain.</span>
     </div>
 
     <section aria-labelledby="results-heading">

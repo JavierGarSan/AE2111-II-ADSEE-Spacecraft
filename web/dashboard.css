@@ -8,20 +8,29 @@
 body { margin: 18px; font-size: 14px; }
 main { max-width: 1200px; margin: 0 auto; }
 h1 { font-size: 26px; margin-bottom: 8px; }
+.title-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap; }
+.template-control { margin: 0; }
 h2 { font-size: 19px; margin: 18px 0 10px; }
 hr { border: 0; border-top: 1px solid #aaa; }
 button { padding: 5px 10px; font: inherit; cursor: pointer; }
 button:disabled { cursor: default; }
-.modulation-control { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 16px 0 10px; }
-.modulation-control label { font-weight: bold; }
-.modulation-control select { font: inherit; padding: 5px 8px; color: #222; background: #fff; border: 1px solid #aaa; }
-#modulation-help { font-size: 12px; color: #555; }
+.selector-control { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 10px 0; }
+.selector-control label { font-weight: bold; min-width: 86px; }
+.selector-control select { font: inherit; padding: 5px 8px; color: #222; background: #fff; border: 1px solid #aaa; }
+.template-control label { min-width: auto; }
+.selector-help { font-size: 12px; color: #555; }
+.modulation-control { margin-top: 16px; }
+.encoding-control { margin-bottom: 16px; }
 .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .help { color: #555; margin: 4px 0 14px; }
 .parameter-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
 .parameter { border: 1px solid #bbb; padding: 10px; background: #fff; min-width: 0; }
 .parameter.fixed { background: #f2f2f2; }
 .parameter label { display: block; font-weight: bold; min-height: 34px; line-height: 17px; }
+.parameter-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.lock-button { flex: 0 0 30px; width: 30px; height: 30px; padding: 4px; color: #444; background: #eee; border: 1px solid #aaa; }
+.lock-button[aria-pressed="false"] { background: #fff; }
+.lock-button svg { display: block; width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .value-line { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; min-height: 28px; padding-top: 4px; }
 .value-line output { font-size: 16px; overflow-wrap: anywhere; }
 .control-note { font-size: 12px; color: #555; white-space: nowrap; }
@@ -56,5 +65,6 @@ section { margin-bottom: 22px; }
   body { margin: 12px; }
   .parameter-grid, .summary-grid { grid-template-columns: 1fr; }
   .section-heading { align-items: flex-start; }
+  .template-control { width: 100%; }
   th, td { padding: 6px; }
 }

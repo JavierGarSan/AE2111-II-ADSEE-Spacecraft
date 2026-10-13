@@ -1,5 +1,5 @@
 
-## Earth dashboard
+## Spacecraft dashboard
 
 Run with Python 3 (no extra packages needed):
 
@@ -9,9 +9,27 @@ python dashboard.py
 
 On Windows you can also use `py dashboard.py` if the Python launcher is configured. Open **http://127.0.0.1:8000** in your browser. Stop the server with Ctrl+C. To choose another port, run `python dashboard.py --port 8001`.
 
-The dashboard shows all 20 Earth parameters from Table 1 in the tutorial assignment, in the original order. Each has a slider below its value. The 14 red Earth cells are disabled, including the N/A elongation angle and uncoded channel coding. The six adjustable values are the two transmitter powers, transmitter and receiver loss factors, downlink frequency, and uplink/downlink frequency ratio. A separate modulation selector sits directly above Results, outside the input grid, with **4-QAM** and **64-QAM**. It applies to both uplink and downlink. Reset restores the exact Earth defaults, including 221/240, and selects 4-QAM.
+The dashboard starts with all 20 Earth parameters from Table 1 in the tutorial assignment, in their original order. Each cell has a slider and a lock button. The 14 red Earth cells start locked; every cell can be unlocked and relocked. Locks control whether the cell's slider can move. Numeric bounds and the spacecraft power constraint still apply.
 
-Slider changes recalculate the payload data rate, daily data, required downlink rate, uplink and downlink budgets, and margins using the helpers in `main.py`. Fixed values are also enforced by the API. This dashboard covers the Earth telecommunications case; Table 2's ADCS calculations are outside this tool's current scope.
+The **Templates** dropdown to the right of the title loads all 20 values, the orbiting body, uncoded encoding, and the red-cell lock pattern from the supplied table:
+
+- Case 1 - Earth LEO
+- Case 2 - Moon LRO
+- Case 3 - Mars Hope
+- Case 4 - Mars MRO
+- Case 5 - Mercury Bepi. C
+
+Selecting a template keeps your chosen 4-QAM/64-QAM modulation. Changing its values, body, encoding or lock states shows **Custom inputs**. Every initially locked field can still be unlocked.
+
+An **Orbiting body** selector above the grid offers Earth, Moon, Mars, Venus and Mercury. Changing this selector keeps every current input and lock state, while updating the body's gravity, radius, payload orbital speed and estimated range to a ground station on Earth. Mission values are loaded through Templates.
+
+The **Modulation** selector immediately above Results offers 4-QAM and 64-QAM. The **Encoding** selector directly below it offers Uncoded and LDPC. Both selectors apply to uplink and downlink. The encoding selector and Channel coding grid cell share one value; the grid lock controls that cell's slider. LDPC retains the existing model's assumed rate 3/4 and 10 dB coding gain, rather than a measured code-specific BER curve.
+
+**Reset inputs** keeps the selected body and restores the last loaded template's values and lock states. It selects 4-QAM and restores the template's Uncoded encoding and exact turn-around ratio (221/240 or 749/880). Power slider limits update together so transmitter RF power cannot exceed the total spacecraft power input.
+
+Input changes recalculate the payload data rate, daily data, required downlink rate, uplink and downlink budgets, and margins using the helpers in `main.py`. The API validates types, ranges and encoding/body choices, and accepts updates to initially locked values. At 0% imaging duty cycle there is no downlink data: required rate and volume are zero, while downlink Eb/N0 and margin are not applicable. Table 2's ADCS calculations remain outside this tool's current scope.
+
+Earth uses the existing ground-station slant range at 20-degree elevation. Moon uses the mean Earth-Moon centre distance. Mars, Venus and Mercury use a fixed heliocentric radius and the angle at the Sun between Earth-Sun and spacecraft-Sun lines. Mercury retains the original model's perihelion-distance approximation. If elongation remains N/A, the calculation uses a disclosed maximum-range angle of 180 degrees; unlock that cell to enter an angle. These remote ranges approximate centre-to-centre distances and omit spacecraft orbital phase, station position, occultation and contact availability. Venus uses the current inputs as a custom configuration. Body constants and sources are listed in the calculation assumptions.
 
 The case table does not supply antenna efficiency or receiver noise inputs. The assumptions shown below the results specify the values used: antenna efficiency 0.6, minimum elevation 20 degrees, spacecraft/ground antenna noise temperatures 290/100 K, receiver noise figure 2 dB, cable temperature 290 K, and ideal ground pointing. The model uses Gray-coded square QAM in AWGN: exact uncoded BER for 4-QAM and a low-BER nearest-neighbor approximation for 64-QAM. At BER 1e-6 the required Eb/N0 is 10.530 dB for 4-QAM and 18.777 dB for 64-QAM. Symbol rate and bandwidth use 2 or 6 bits per symbol respectively. Atmospheric/rain losses are simplified, and antenna noise stays fixed rather than modeling additional atmospheric/rain emission. These assumptions can be reviewed in `earth_model.py`; margins are estimates under that model.
 

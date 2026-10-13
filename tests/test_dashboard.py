@@ -1,4 +1,4 @@
-"""Integration checks for the dashboard's Earth case and local API."""
+"""Integration checks for mission selection, editable inputs and the local API."""
 
 import json
 import math
@@ -9,7 +9,11 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from dashboard import DashboardHandler
-from earth_model import CASE_PARAMETERS, DEFAULT_MODULATION, MODULATION_OPTIONS, calculate_earth
+from earth_model import (
+    CASE_PARAMETERS, DEFAULT_MODULATION, DEFAULT_PLANET, ENCODING_OPTIONS,
+    MODULATION_OPTIONS, PLANET_OPTIONS, calculate_earth, calculate_scenario,
+    DEFAULT_TEMPLATE, MISSION_TEMPLATES,
+)
 import main as model
 
 
@@ -115,12 +119,14 @@ class EarthCaseTests(unittest.TestCase):
         result = calculate_earth()
         self.assertEqual(result["inputs"]["elongation_angle_deg"], None)
         self.assertEqual(result["inputs"]["coding"], "uncoded")
+        self.assertEqual(result["inputs"]["planet"], DEFAULT_PLANET)
         self.assertAlmostEqual(result["uplink"]["frequency_ghz"], 2.2 * 221 / 240)
         self.assertAlmostEqual(result["payload"]["required_downlink_rate_bps"], result["payload"]["daily_data_bits"] / 1800)
         for direction in ("uplink", "downlink"):
             budget = result[direction]
             self.assertGreater(budget["free_space_loss_db"], 0)
-            self.assertTrue(all(math.isfinite(v) for v in budget.values()))
+            self.assertTrue(all(math.isfinite(v) for v in budget.values()
+                                if isinstance(v, (int, float))))
             self.assertAlmostEqual(budget["margin_db"], budget["available_eb_n0_db"] - budget["required_eb_n0_db"])
 
     def test_power_change_affects_correct_direction(self):
@@ -147,24 +153,187 @@ class EarthCaseTests(unittest.TestCase):
         self.assertAlmostEqual(frequency["uplink"]["frequency_ghz"], 8.4 * 1.1)
         self.assertNotEqual(frequency["downlink"]["margin_db"], original["downlink"]["margin_db"])
 
-    def test_fixed_values_cannot_be_overridden(self):
+    def test_initially_locked_values_can_be_changed_after_unlocking(self):
         for parameter in CASE_PARAMETERS:
             if not parameter["locked"]:
                 continue
-            default = parameter["default"]
-            changed = (default * 2) if isinstance(default, (int, float)) else "changed"
+            identifier = parameter["id"]
+            if "choices" in parameter:
+                changed = "ldpc"
+            elif identifier == "spacecraft_power_w":
+                changed = parameter["max"]
+            elif identifier == "elongation_angle_deg":
+                changed = 45
+            else:
+                changed = parameter["min"]
             with self.subTest(parameter=parameter["id"]):
-                with self.assertRaisesRegex(ValueError, "fixed"):
-                    calculate_earth({parameter["id"]: changed})
+                result = calculate_scenario({identifier: changed})
+                self.assertEqual(result["inputs"][identifier], changed)
+                json.dumps(result, allow_nan=False)
 
-    def test_all_editable_bounds_produce_finite_results(self):
+    def test_all_numeric_parameter_bounds_are_accepted(self):
         for parameter in CASE_PARAMETERS:
-            if parameter["locked"]:
+            if "choices" in parameter:
                 continue
             for bound in ("min", "max"):
                 with self.subTest(parameter=parameter["id"], bound=bound):
-                    result = calculate_earth({parameter["id"]: parameter[bound]})
+                    overrides = {parameter["id"]: parameter[bound]}
+                    # The total RF power constraint must also hold when its
+                    # inputs are set to independently valid slider endpoints.
+                    if parameter["id"] == "spacecraft_power_w":
+                        overrides["spacecraft_transmitter_power_w"] = 1
+                    elif parameter["id"] == "spacecraft_transmitter_power_w":
+                        overrides["spacecraft_power_w"] = 10000
+                    result = calculate_scenario(overrides)
+                    self.assertEqual(result["inputs"][parameter["id"]], parameter[bound])
                     json.dumps(result, allow_nan=False)
+
+    def test_numeric_parameter_types_and_bounds_are_validated(self):
+        for parameter in CASE_PARAMETERS:
+            if "choices" in parameter:
+                continue
+            invalid_values = (
+                parameter["min"] - parameter["step"],
+                parameter["max"] + parameter["step"],
+                True, "1", float("nan"), float("inf"),
+            )
+            for value in invalid_values:
+                with self.subTest(parameter=parameter["id"], value=value):
+                    with self.assertRaises(ValueError):
+                        calculate_scenario({parameter["id"]: value})
+        with self.assertRaises(ValueError):
+            calculate_scenario({"payload_bits_per_pixel": 32.5})
+
+    def test_zero_imaging_duty_cycle_has_no_downlink_eb_n0(self):
+        result = calculate_scenario({"payload_duty_cycle_percent": 0})
+        self.assertEqual(result["payload"]["daily_data_bits"], 0)
+        self.assertEqual(result["payload"]["required_downlink_rate_bps"], 0)
+        downlink = result["downlink"]
+        for field in ("information_rate_bps", "transmitted_rate_bps", "symbol_rate_baud"):
+            self.assertEqual(downlink[field], 0)
+        self.assertIsNone(downlink["available_eb_n0_db"])
+        self.assertIsNone(downlink["margin_db"])
+        self.assertTrue(math.isfinite(downlink["carrier_to_noise_density_db_hz"]))
+        self.assertTrue(math.isfinite(result["uplink"]["margin_db"]))
+        json.dumps(result, allow_nan=False)
+
+    def test_encoding_changes_channel_rate_and_assumed_coding_gain(self):
+        uncoded = calculate_scenario({"coding": "uncoded"})
+        for encoding in (option for option in ENCODING_OPTIONS if option != "uncoded"):
+            with self.subTest(encoding=encoding):
+                encoded = calculate_scenario({"coding": encoding})
+                self.assertEqual(encoded["inputs"]["coding"], encoding)
+                self.assertEqual(encoded["payload"], uncoded["payload"])
+                self.assertEqual(encoded["geometry"], uncoded["geometry"])
+                for direction in ("uplink", "downlink"):
+                    budget = encoded[direction]
+                    original = uncoded[direction]
+                    self.assertEqual(budget["information_rate_bps"], original["information_rate_bps"])
+                    self.assertAlmostEqual(budget["transmitted_rate_bps"] / original["transmitted_rate_bps"], 4 / 3)
+                    self.assertAlmostEqual(budget["symbol_rate_baud"] / original["symbol_rate_baud"], 4 / 3)
+                    self.assertEqual(budget["available_eb_n0_db"], original["available_eb_n0_db"])
+                    self.assertAlmostEqual(original["required_eb_n0_db"] - budget["required_eb_n0_db"], 10)
+                    self.assertAlmostEqual(budget["margin_db"] - original["margin_db"], 10)
+
+    def test_planet_selection_preserves_inputs_and_changes_geometry(self):
+        baseline = calculate_scenario({
+            "orbit_altitude_km": 1000,
+            "payload_swath_deg": 30,
+            "payload_bits_per_pixel": 16,
+            "payload_duty_cycle_percent": 25,
+            "spacecraft_transmitter_power_w": 300,
+            "modulation": "64-QAM", "coding": "ldpc",
+        })
+        for planet in PLANET_OPTIONS:
+            with self.subTest(planet=planet["id"]):
+                overrides = {**baseline["inputs"], "planet": planet["id"]}
+                selected = calculate_scenario(overrides)
+                self.assertEqual(selected["inputs"], overrides)
+                self.assertEqual(selected["scenario"], planet["id"])
+                self.assertEqual(selected["planet_label"], planet["label"])
+                geometry = selected["geometry"]
+                self.assertEqual(geometry["orbiting_body"], planet["id"])
+                expected_speed = math.sqrt(
+                    geometry["planet_mu_km3_s2"] /
+                    (geometry["planet_radius_km"] + overrides["orbit_altitude_km"])
+                ) * 1000
+                self.assertAlmostEqual(selected["payload"]["scan_speed_m_s"], expected_speed)
+                if planet["id"] != "earth":
+                    self.assertNotEqual(geometry["slant_range_km"], baseline["geometry"]["slant_range_km"])
+                    self.assertNotEqual(selected["payload"]["active_rate_bps"], baseline["payload"]["active_rate_bps"])
+                json.dumps(selected, allow_nan=False)
+
+    def test_elongation_changes_interplanetary_range_without_setting_inputs(self):
+        for planet in ("mars", "venus", "mercury"):
+            with self.subTest(planet=planet):
+                unspecified = calculate_scenario({"planet": planet})
+                closest = calculate_scenario({"planet": planet, "elongation_angle_deg": 0})
+                farthest = calculate_scenario({"planet": planet, "elongation_angle_deg": 180})
+                self.assertIsNone(unspecified["inputs"]["elongation_angle_deg"])
+                self.assertEqual(unspecified["geometry"]["effective_elongation_deg"], 180)
+                self.assertEqual(unspecified["geometry"]["slant_range_km"], farthest["geometry"]["slant_range_km"])
+                self.assertLess(closest["geometry"]["slant_range_km"], farthest["geometry"]["slant_range_km"])
+                self.assertGreater(closest["downlink"]["margin_db"], farthest["downlink"]["margin_db"])
+
+    def test_all_planet_modulation_encoding_combinations_are_serializable(self):
+        self.assertEqual({entry["id"] for entry in PLANET_OPTIONS}, {"earth", "moon", "mars", "venus", "mercury"})
+        self.assertEqual(set(ENCODING_OPTIONS), {"uncoded", "ldpc"})
+        for planet in PLANET_OPTIONS:
+            for modulation in MODULATION_OPTIONS:
+                for encoding in ENCODING_OPTIONS:
+                    with self.subTest(planet=planet["id"], modulation=modulation, encoding=encoding):
+                        result = calculate_scenario({
+                            "planet": planet["id"], "modulation": modulation,
+                            "coding": encoding,
+                        })
+                        self.assertEqual(result["inputs"]["planet"], planet["id"])
+                        self.assertEqual(result["modulation"], modulation)
+                        self.assertEqual(result["inputs"]["coding"], encoding)
+                        for direction in ("uplink", "downlink"):
+                            self.assertTrue(math.isfinite(result[direction]["margin_db"]))
+                        json.dumps(result, allow_nan=False)
+
+    def test_all_mission_templates_load_and_recalculate(self):
+        expected = [
+            ("Case 1 - Earth LEO", "earth", 820, 45, 1e8, 14),
+            ("Case 2 - Moon LRO", "moon", 50, 6, 1e8, 8),
+            ("Case 3 - Mars Hope", "mars", 1000, 5, 1e6, 12),
+            ("Case 4 - Mars MRO", "mars", 300, 0.5, 1e6, 9),
+            ("Case 5 - Mercury Bepi. C", "mercury", 500, 10, 1e5, 13),
+        ]
+        self.assertEqual(len(MISSION_TEMPLATES), 5)
+        ids = {parameter["id"] for parameter in CASE_PARAMETERS}
+        for template, (label, planet, altitude, swath, uplink_rate, locked_count) in zip(MISSION_TEMPLATES, expected):
+            with self.subTest(template=template["id"]):
+                self.assertEqual(template["label"], label)
+                self.assertEqual(template["planet"], planet)
+                self.assertEqual(set(template["values"]), ids)
+                self.assertEqual(set(template["locks"]), ids)
+                self.assertEqual(sum(template["locks"].values()), locked_count)
+                self.assertEqual(template["values"]["orbit_altitude_km"], altitude)
+                self.assertEqual(template["values"]["payload_swath_deg"], swath)
+                self.assertEqual(template["values"]["required_uplink_rate_bps"], uplink_rate)
+                for modulation in MODULATION_OPTIONS:
+                    inputs = {**template["values"], "planet": planet, "modulation": modulation}
+                    result = calculate_scenario(inputs)
+                    self.assertEqual(result["inputs"], inputs)
+                    self.assertTrue(math.isfinite(result["downlink"]["margin_db"]))
+                    json.dumps(result, allow_nan=False)
+
+    def test_template_lock_settings_follow_the_coloured_cells(self):
+        templates = {entry["id"]: entry for entry in MISSION_TEMPLATES}
+        # These differ between columns and catch incorrectly reused Earth locks.
+        self.assertFalse(templates["case_2"]["locks"]["spacecraft_antenna_diameter_m"])
+        self.assertTrue(templates["case_2"]["locks"]["downlink_frequency_ghz"])
+        self.assertFalse(templates["case_3"]["locks"]["ground_antenna_diameter_m"])
+        self.assertTrue(templates["case_4"]["locks"]["ground_antenna_diameter_m"])
+        self.assertFalse(templates["case_4"]["locks"]["payload_swath_deg"])
+        self.assertTrue(templates["case_5"]["locks"]["payload_bits_per_pixel"])
+        for template in MISSION_TEMPLATES[1:]:
+            self.assertFalse(template["locks"]["coding"])
+        for template in MISSION_TEMPLATES:
+            self.assertEqual(template["values"]["turnaround_ratio"],
+                             221 / 240 if template["planet"] in ("earth", "moon") else 749 / 880)
 
 
 class QuietDashboardHandler(DashboardHandler):
@@ -235,6 +404,22 @@ class DashboardApiTests(unittest.TestCase):
             self.assertEqual(config["parameters"], CASE_PARAMETERS)
             self.assertEqual(config["modulations"], MODULATION_OPTIONS)
             self.assertEqual(config["default_modulation"], "4-QAM")
+            self.assertEqual(config["planets"], PLANET_OPTIONS)
+            self.assertEqual(config["default_planet"], DEFAULT_PLANET)
+            self.assertEqual(config["encodings"], ENCODING_OPTIONS)
+            self.assertEqual(config["default_encoding"], "uncoded")
+            self.assertEqual(config["templates"], MISSION_TEMPLATES)
+            self.assertEqual(config["default_template"], DEFAULT_TEMPLATE)
+
+    def test_template_switches_through_api(self):
+        for template in MISSION_TEMPLATES:
+            with self.subTest(template=template["label"]):
+                inputs = {**template["values"], "planet": template["planet"], "modulation": "64-QAM"}
+                with self.post(inputs) as response:
+                    result = json.load(response)
+                self.assertEqual(result["inputs"], inputs)
+                self.assertEqual(result["scenario"], template["planet"])
+                self.assertGreater(result["payload"]["required_downlink_rate_bps"], 0)
 
     def test_modulation_selection_and_reset_through_api(self):
         with self.post({"modulation": "64-QAM"}) as response:
@@ -247,6 +432,35 @@ class DashboardApiTests(unittest.TestCase):
         self.assertEqual(reset["modulation"], "4-QAM")
         self.assertEqual(reset["downlink"]["bits_per_symbol"], 2)
 
+    def test_planet_encoding_and_unlocked_input_updates_through_api(self):
+        for planet in PLANET_OPTIONS:
+            with self.subTest(planet=planet["id"]):
+                inputs = {
+                    "planet": planet["id"], "coding": "ldpc",
+                    "orbit_altitude_km": 1000,
+                    "ground_antenna_diameter_m": 20,
+                    "payload_bits_per_pixel": 16,
+                }
+                with self.post(inputs) as response:
+                    selected = json.load(response)
+                self.assertEqual(selected["scenario"], planet["id"])
+                for key, value in inputs.items():
+                    self.assertEqual(selected["inputs"][key], value)
+                self.assertAlmostEqual(selected["downlink"]["transmitted_rate_bps"],
+                                       selected["payload"]["required_downlink_rate_bps"] / 0.75)
+        with self.post({}) as response:
+            reset = json.load(response)
+        self.assertEqual(reset["scenario"], "earth")
+        self.assertEqual(reset["inputs"]["coding"], "uncoded")
+        self.assertEqual(reset["inputs"]["orbit_altitude_km"], 820)
+
+    def test_zero_duty_cycle_returns_json_null_instead_of_invalid_numbers(self):
+        with self.post({"payload_duty_cycle_percent": 0}) as response:
+            result = json.load(response)
+        self.assertIsNone(result["downlink"]["margin_db"])
+        self.assertIsNone(result["downlink"]["available_eb_n0_db"])
+        self.assertEqual(result["payload"]["required_downlink_rate_bps"], 0)
+
     def test_slider_update_and_reset(self):
         with self.post({"spacecraft_transmitter_power_w": 300}) as response:
             changed = json.load(response)
@@ -257,7 +471,15 @@ class DashboardApiTests(unittest.TestCase):
 
     def test_bad_inputs_are_rejected_with_json_errors(self):
         for data in (
-            {"orbit_altitude_km": 1000}, {"coding": "coded"},
+            {"orbit_altitude_km": 0}, {"orbit_altitude_km": "1000"},
+            {"coding": "reed-solomon"}, {"coding": None},
+            {"coding": "coded"},
+            {"coding": 1}, {"coding": ["coded"]},
+            {"planet": "jupiter"}, {"planet": None},
+            {"planet": 1}, {"planet": ["moon"]},
+            {"payload_bits_per_pixel": 32.5},
+            {"payload_duty_cycle_percent": -1},
+            {"elongation_angle_deg": float("inf")},
             {"ground_transmitter_power_w": 0},
             {"spacecraft_transmitter_power_w": 851},
             {"receiver_loss_factor": float("nan")},
