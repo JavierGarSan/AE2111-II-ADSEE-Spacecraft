@@ -1,8 +1,6 @@
 import math
 from statistics import NormalDist
 
-print("Hello cruel world")
-
 # So this entire thing is just gonna be 𝑆𝑁𝑅 = 𝐸𝐼𝑅𝑃 − 𝐿_(𝐹𝑟𝑒𝑒 𝑆𝑝𝑎𝑐𝑒) + 𝐺/𝑇 − 10 𝑙𝑜𝑔10 𝑘_B D_𝑟 (𝑑𝐵)
 # The final output provided by the tool shall be the link margin of the mission under consideration (for both the uplink and the downlink communication)
 
@@ -129,19 +127,52 @@ def dB_n(value):
 def antenna_gain(radiation_efficiency, antenna_diameter, wavelength): # return in dB
     return 10 * math.log10(radiation_efficiency * (math.pi*antenna_diameter/wavelength)**2)
 
-def freespaceloss(distance, wavelength):    # return in dB
-    return -20 * math.log10(4*math.pi*distance/wavelength) 
+def freespaceloss(distance, wavelength):
+    """Return free-space attenuation in dB; distance and wavelength are metres.
+
+    Loss magnitudes are positive in the link-budget convention. The Friis
+    far-field model does not apply where its calculated attenuation is negative.
+    """
+    if not all(math.isfinite(value) and value > 0 for value in (distance, wavelength)):
+        raise ValueError("Distance and wavelength must be finite and positive.")
+    loss_db = 20 * math.log10(4 * math.pi * distance / wavelength)
+    if loss_db < 0:
+        raise ValueError("Distance is too small for the free-space loss model.")
+    return loss_db
 
 def pointing_angle_loss(frequency_ghz,offset_antenna_diameter_m, pointing_offset_deg):
-    # Return the pointing loss of one parabolic antenna in dB.
-    # This needs to be called twice.
-    if frequency_ghz <= 0 or offset_antenna_diameter_m <= 0:
-        raise ValueError("Frequency and both antenna diameters must be positive.")
+    """Return nonnegative parabolic-antenna pointing attenuation in dB.
+
+    Frequency is in GHz, diameter in metres, and offset in degrees. The
+    approximate full half-power beamwidth is 21 / (frequency * diameter) degrees.
+    Call separately for the transmitting and receiving antennas.
+    """
+    if not all(
+        math.isfinite(value) and value > 0
+        for value in (frequency_ghz, offset_antenna_diameter_m)
+    ):
+        raise ValueError("Frequency and antenna diameter must be finite and positive.")
+    if not math.isfinite(pointing_offset_deg) or pointing_offset_deg < 0:
+        raise ValueError("Pointing offset must be finite and nonnegative.")
     offset_half_power_angle_deg = 21 / (frequency_ghz * offset_antenna_diameter_m)
-    offset_loss_db = -12 * (pointing_offset_deg / offset_half_power_angle_deg)**2
+    offset_loss_db = 12 * (pointing_offset_deg / offset_half_power_angle_deg)**2
     return  offset_loss_db
 
-def energy_per_bit(EIRP, free_space_loss, All_other_losses, G_over_T, bitrate): # input in dB
+def energy_per_bit(EIRP, free_space_loss, All_other_losses, G_over_T, bitrate):
+    """Return Eb/N0 in dB for a positive information bitrate in bit/s.
+
+    EIRP is in dBW, G/T in dB/K, and both attenuation arguments are
+    nonnegative loss magnitudes in dB.
+    """
+    if not all(
+        math.isfinite(value)
+        for value in (EIRP, free_space_loss, All_other_losses, G_over_T, bitrate)
+    ):
+        raise ValueError("Link-budget inputs must be finite.")
+    if bitrate <= 0:
+        raise ValueError("Bitrate must be positive.")
+    if free_space_loss < 0 or All_other_losses < 0:
+        raise ValueError("Loss magnitudes must be nonnegative.")
     return EIRP - free_space_loss - All_other_losses + G_over_T - 10 * math.log10(k_b * bitrate)
 
 def distance_earth_orbit(satellite_altitude, minimum_elevation_angle): # input in km, output in km
@@ -276,17 +307,27 @@ def link_margin(available_eb_n0_db, required_eb_n0_db):
 
     return available_eb_n0_db - required_eb_n0_db
 
-payload_dr = payload_data_rate(orbit_altitude, pl_swath_width_angle, pl_pixel_size, pl_bits_per_pixel, planet_radius_km=earthRadius, mu_km3_s2=earth_mu)
-data_generated_per_day = daily_data_generated(payload_dr, pl_duty_cycle)
-required_downlink_dr = required_downlink_rate(data_generated_per_day, pl_downlink_t)
+if __name__ == "__main__":
+    # Use the same defaults and assumptions as the web dashboard. Import here
+    # because earth_model imports this module's calculation helpers.
+    from earth_model import calculate_earth
 
-print(f"Payload data rate while active: {payload_dr:.3e} bit/s")
-print(f"Data generated per day: {data_generated_per_day:.3e} bits ({data_generated_per_day / 8 / 10**12:.3f} TB)")
-print(f"Required downlink data rate: {required_downlink_dr:.3e} bit/s")
-
-wavelength_downlink = c/(downlink_f*10**9)
-transmitter_gain = antenna_gain(radiation_efficiency=loss_factor_transmitter, antenna_diameter=antenna_diameter_sc, wavelength=wavelength_downlink)
-print("transmitter_gain: ", transmitter_gain)
-eirp = n_dB(transmitter_P_sc * dB_n(transmitter_gain)* loss_factor_transmitter)
-print(f"eirp = {eirp}")
+    result = calculate_earth()
+    payload = result["payload"]
+    print(f"Payload data rate while active: {payload['active_rate_bps']:.3e} bit/s")
+    print(
+        f"Data generated per day: {payload['daily_data_bits']:.3e} bits "
+        f"({payload['daily_data_tb']:.3f} TB)"
+    )
+    print(f"Required downlink data rate: {payload['required_downlink_rate_bps']:.3e} bit/s")
+    print(f"Earth slant range: {result['geometry']['slant_range_km']:.3f} km")
+    for direction in ("uplink", "downlink"):
+        budget = result[direction]
+        print(
+            f"{direction.capitalize()}: {budget['frequency_ghz']:.6f} GHz, "
+            f"EIRP {budget['eirp_dbw']:.3f} dBW, "
+            f"available Eb/N0 {budget['available_eb_n0_db']:.3f} dB, "
+            f"required Eb/N0 {budget['required_eb_n0_db']:.3f} dB, "
+            f"margin {budget['margin_db']:.3f} dB"
+        )
 
