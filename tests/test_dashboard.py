@@ -25,12 +25,39 @@ class EarthCaseTests(unittest.TestCase):
         result = calculate_earth()
         self.assertEqual(result["payload"]["pixels_per_line"], 270000)
         self.assertAlmostEqual(result["payload"]["ground_pixel_size_m"], 2.385283311060599)
-        self.assertAlmostEqual(result["payload"]["active_rate_bps"] / 1e9, 23.892760472826298)
-        self.assertAlmostEqual(result["payload"]["daily_data_tb"], 258.04181310652405)
+        self.assertAlmostEqual(result["payload"]["active_rate_bps"] / 1e9, 26.967954883078625)
+        self.assertAlmostEqual(result["payload"]["daily_data_tb"], 291.25391273724915)
+        self.assertAlmostEqual(result["payload"]["required_downlink_rate_bps"] / 1e12, 1.294461834387774)
         self.assertAlmostEqual(result["geometry"]["slant_range_km"], 1804.5717272642773)
         self.assertAlmostEqual(model.distance_earth_orbit(820, math.pi / 2), 820)
         horizon_range = math.sqrt((model.earthRadius + 820) ** 2 - model.earthRadius ** 2)
         self.assertAlmostEqual(model.distance_earth_orbit(820, 0), horizon_range)
+
+    def test_payload_scan_uses_assignment_orbital_velocity_approximation(self):
+        # Independent reference: the assignment allows ground velocity to be
+        # approximated by orbital velocity, rather than the slower nadir track.
+        altitude_m = 820_000
+        earth_radius_km = 6371
+        mu_km3_s2 = 398600.435507
+        orbital_speed = math.sqrt(mu_km3_s2 / (earth_radius_km + 820)) * 1000
+        pixel_angle = 0.01 / 60 * math.pi / 180
+        pixel_size = 2 * altitude_m * math.tan(pixel_angle / 2)
+        pixels_per_line = 45 * 60 / 0.01
+        expected_generation_rate = pixels_per_line * orbital_speed / pixel_size * 32
+        result = calculate_earth()
+        payload = result["payload"]
+        self.assertAlmostEqual(payload["orbital_speed_m_s"], orbital_speed)
+        self.assertAlmostEqual(payload["scan_speed_m_s"], orbital_speed)
+        self.assertAlmostEqual(payload["active_rate_bps"] / expected_generation_rate, 1)
+        self.assertAlmostEqual(
+            payload["required_downlink_rate_bps"] / expected_generation_rate,
+            24 / 0.5,
+        )
+        # Preserve the physically projected speed helper for other uses; using
+        # it for this payload would reproduce the old 1.147 Tbit/s result.
+        projected_speed = orbital_speed * earth_radius_km / (earth_radius_km + 820)
+        self.assertAlmostEqual(model.ground_track_speed(820, earth_radius_km, mu_km3_s2), projected_speed)
+        self.assertGreater(payload["scan_speed_m_s"], projected_speed)
 
     def test_friis_in_linear_units_matches_downlink(self):
         result = calculate_earth()
@@ -56,9 +83,9 @@ class EarthCaseTests(unittest.TestCase):
             "receiver_loss_factor": 0.9,
         })
         self.assertGreater(result["downlink"]["margin_db"], 3)
-        self.assertAlmostEqual(result["downlink"]["margin_db"], 7.961255787041047)
+        self.assertAlmostEqual(result["downlink"]["margin_db"], 7.435438950328299)
         self.assertAlmostEqual(result["uplink"]["frequency_ghz"], 7.735)
-        self.assertAlmostEqual(result["downlink"]["symbol_rate_baud"] / 1e9, 191.14208378261038)
+        self.assertAlmostEqual(result["downlink"]["symbol_rate_baud"] / 1e9, 215.743639064629)
         self.assertTrue(any("cannot carry" in warning for warning in result["warnings"]))
         # The same settings retain 3 dB with a small, nonzero ground offset.
         loss_db = model.pointing_angle_loss(8.4, 15, 0.02)

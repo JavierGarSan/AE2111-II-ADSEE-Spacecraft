@@ -84,6 +84,9 @@ MODULATION_OPTIONS = ["4-QAM", "64-QAM"]
 ASSUMPTIONS = [
     "Circular Earth orbit; spherical, non-rotating Earth; nadir line-scanning "
     "payload with no compression or packet overhead (existing model).",
+    "Payload scan speed is approximated by circular-orbit speed, neglecting "
+    "the orbital-versus-ground velocity difference as permitted by the "
+    "assignment. Pixels per line use the angular swath/pixel ratio.",
     "Minimum ground-station elevation: 20 degrees.",
     "Parabolic antenna radiation efficiency: 0.6 for both antennas.",
     "Antenna noise temperature: spacecraft 290 K; ground station 100 K.",
@@ -244,6 +247,7 @@ def calculate_earth(overrides=None):
         altitude_km, inputs["payload_swath_deg"], inputs["payload_pixel_arcmin"],
         inputs["payload_bits_per_pixel"], model.earthRadius, model.earth_mu,
     )
+    scan_speed_m_s = model.orbital_speed(altitude_km, model.earthRadius, model.earth_mu)
     daily_data_bits = model.daily_data_generated(
         active_rate_bps, inputs["payload_duty_cycle_percent"]
     )
@@ -285,6 +289,8 @@ def calculate_earth(overrides=None):
             "downlink_frequency_ghz": downlink_frequency_ghz,
         },
         "payload": {
+            "orbital_speed_m_s": scan_speed_m_s,
+            "scan_speed_m_s": scan_speed_m_s,
             "active_rate_bps": active_rate_bps,
             "daily_data_bits": daily_data_bits,
             "daily_data_tb": daily_data_bits / 8 / 1e12,

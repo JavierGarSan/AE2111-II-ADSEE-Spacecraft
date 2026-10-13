@@ -54,6 +54,16 @@ def orbital_period(altitude_km, planet_radius_km, mu_km3_s2):
     return 2 * math.pi * math.sqrt(orbit_radius_km**3 / mu_km3_s2)
 
 
+def orbital_speed(altitude_km, planet_radius_km, mu_km3_s2):
+    """Return circular-orbit speed in m/s, with distances in km and mu in km^3/s^2."""
+    if not all(
+        math.isfinite(value) and value > 0
+        for value in (altitude_km, planet_radius_km, mu_km3_s2)
+    ):
+        raise ValueError("Altitude, radius and gravitational parameter must be finite and positive.")
+    return math.sqrt(mu_km3_s2 / (planet_radius_km + altitude_km)) * 1000
+
+
 def ground_track_speed(altitude_km, planet_radius_km, mu_km3_s2):
     """Return the nadir ground-track speed in m/s, ignoring planets rotation."""
     period_s = orbital_period(altitude_km, planet_radius_km, mu_km3_s2)
@@ -80,11 +90,13 @@ def payload_data_rate(altitude_km, swath_width_angle_deg, pixel_size_arcmin,
     """Estimate raw bits/s while a nadir pushbroom camera is active.
 
     Assumes square angular pixels and one image row per along-track pixel.
+    Uses orbital speed as the ground scan speed, following the assignment's
+    permitted simplification and the referenced data-rate calculation.
     Cross-track pixels are counted by angle, since ground footprints grow toward the swath edges. 
     """
     if bits_per_pixel <= 0:
         raise ValueError("Bits per pixel must be positive.")
-    speed_m_s = ground_track_speed(altitude_km, planet_radius_km, mu_km3_s2)
+    speed_m_s = orbital_speed(altitude_km, planet_radius_km, mu_km3_s2)
     pixel_size_m = ground_pixel_size(altitude_km, pixel_size_arcmin)
     line_rate_hz = speed_m_s / pixel_size_m
     return pixels_per_line(swath_width_angle_deg, pixel_size_arcmin) * line_rate_hz * bits_per_pixel

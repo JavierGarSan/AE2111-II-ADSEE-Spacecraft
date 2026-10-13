@@ -104,7 +104,7 @@ function displayResults(result) {
   document.querySelector("#downlink-rate").textContent = `${numberText(result.payload.required_downlink_rate_bps)} bit/s`;
   document.querySelector("#daily-data").textContent = `${numberText(result.payload.daily_data_tb, 2)} TB`;
   document.querySelector("#active-rate").textContent = `Active camera: ${numberText(result.payload.active_rate_bps)} bit/s`;
-  document.querySelector("#geometry").textContent = `Slant range: ${numberText(result.geometry.slant_range_km, 2)} km at ${result.geometry.minimum_elevation_deg} deg minimum elevation. Ground pixel size: ${numberText(result.payload.ground_pixel_size_m, 2)} m.`;
+  document.querySelector("#geometry").textContent = `Slant range: ${numberText(result.geometry.slant_range_km, 2)} km at ${result.geometry.minimum_elevation_deg} deg minimum elevation. Ground pixel size: ${numberText(result.payload.ground_pixel_size_m, 2)} m. Payload scan speed: ${numberText(result.payload.scan_speed_m_s, 2)} m/s (orbital-speed approximation).`;
 
   const rows = [
     ["Frequency", "frequency_ghz", "GHz"],
