@@ -7,7 +7,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from earth_model import CASE_PARAMETERS, calculate_earth
+from earth_model import CASE_PARAMETERS, DEFAULT_MODULATION, MODULATION_OPTIONS, calculate_earth
 
 
 WEB_DIRECTORY = Path(__file__).resolve().parent / "web"
@@ -36,7 +36,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlsplit(self.path).path
         if path == "/api/config":
-            self.send_json(HTTPStatus.OK, {"scenario": "Earth", "parameters": CASE_PARAMETERS})
+            self.send_json(HTTPStatus.OK, {
+                "scenario": "Earth",
+                "parameters": CASE_PARAMETERS,
+                "modulations": MODULATION_OPTIONS,
+                "default_modulation": DEFAULT_MODULATION,
+            })
         elif path in STATIC_FILES:
             filename, content_type = STATIC_FILES[path]
             self.send_body(HTTPStatus.OK, (WEB_DIRECTORY / filename).read_bytes(), content_type)

@@ -9,7 +9,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from dashboard import DashboardHandler
-from earth_model import CASE_PARAMETERS, calculate_earth
+from earth_model import CASE_PARAMETERS, DEFAULT_MODULATION, MODULATION_OPTIONS, calculate_earth
 import main as model
 
 
@@ -49,20 +49,38 @@ class EarthCaseTests(unittest.TestCase):
 
     def test_three_db_configuration_and_bandwidth_limit(self):
         result = calculate_earth({
+            "modulation": "64-QAM",
             "spacecraft_transmitter_power_w": 450,
             "downlink_frequency_ghz": 8.4,
             "transmitter_loss_factor": 0.9,
             "receiver_loss_factor": 0.9,
         })
         self.assertGreater(result["downlink"]["margin_db"], 3)
-        self.assertAlmostEqual(result["downlink"]["margin_db"], 3.376134585136441)
+        self.assertAlmostEqual(result["downlink"]["margin_db"], 7.961255787041047)
         self.assertAlmostEqual(result["uplink"]["frequency_ghz"], 7.735)
-        self.assertAlmostEqual(result["downlink"]["symbol_rate_baud"] / 1e9, 229.37050053913248)
+        self.assertAlmostEqual(result["downlink"]["symbol_rate_baud"] / 1e9, 191.14208378261038)
         self.assertTrue(any("cannot carry" in warning for warning in result["warnings"]))
         # The same settings retain 3 dB with a small, nonzero ground offset.
         loss_db = model.pointing_angle_loss(8.4, 15, 0.02)
         self.assertAlmostEqual(loss_db, 0.1728)
         self.assertGreater(result["downlink"]["margin_db"] - loss_db, 3)
+
+    def test_modulation_updates_threshold_and_bandwidth_for_both_links(self):
+        qam4 = calculate_earth({"modulation": "4-QAM"})
+        qam64 = calculate_earth({"modulation": "64-QAM"})
+        self.assertEqual(calculate_earth()["modulation"], DEFAULT_MODULATION)
+        self.assertEqual(qam4["payload"], qam64["payload"])
+        self.assertEqual(qam4["geometry"], qam64["geometry"])
+        for direction in ("uplink", "downlink"):
+            self.assertEqual(qam4[direction]["bits_per_symbol"], 2)
+            self.assertEqual(qam64[direction]["bits_per_symbol"], 6)
+            self.assertAlmostEqual(qam4[direction]["required_eb_n0_db"], 10.529831699571446)
+            self.assertAlmostEqual(qam64[direction]["required_eb_n0_db"], 18.777249982940724)
+            self.assertEqual(qam4[direction]["available_eb_n0_db"], qam64[direction]["available_eb_n0_db"])
+            self.assertGreater(qam4[direction]["margin_db"], qam64[direction]["margin_db"])
+            self.assertAlmostEqual(qam64[direction]["symbol_rate_baud"], qam4[direction]["symbol_rate_baud"] / 3)
+            self.assertEqual(qam64[direction]["minimum_passband_bandwidth_hz"], qam64[direction]["symbol_rate_baud"])
+        self.assertTrue(any("64-QAM" in warning for warning in qam64["warnings"]))
 
     def test_defaults_and_red_cells_match_earth_table(self):
         self.assertEqual(len(CASE_PARAMETERS), 20)
@@ -151,10 +169,14 @@ class LinkHelperTests(unittest.TestCase):
         self.assertEqual(ideal["g_over_t_db_per_k"], 0)
         lossy = model.receiver_noise_and_gt(20, 100, 0, receiver_loss_factor=0.5)
         self.assertEqual(lossy["system_noise_k"], 390)
-        required_linear = 10 ** (model.required_eb_n0(1e-6, "uncoded") / 10)
-        # Evaluate the forward Gray-coded 32-PSK high-SNR approximation.
-        ber = math.erfc(math.sqrt(5 * required_linear) * math.sin(math.pi / 32)) / 5
-        self.assertAlmostEqual(ber / 1e-6, 1)
+        # Independent forward BER expressions check the threshold inversion.
+        for modulation, factor, scale in (("4-QAM", 1, 1), ("64-QAM", 7 / 12, 1 / 7)):
+            with self.subTest(modulation=modulation):
+                required_linear = 10 ** (model.required_eb_n0(1e-6, "uncoded", modulation) / 10)
+                ber = factor * 0.5 * math.erfc(math.sqrt(scale * required_linear))
+                self.assertAlmostEqual(ber / 1e-6, 1)
+        with self.assertRaisesRegex(ValueError, "4-QAM"):
+            model.required_eb_n0(1e-6, "uncoded", "16-QAM")
 
 
 class DashboardApiTests(unittest.TestCase):
@@ -182,7 +204,21 @@ class DashboardApiTests(unittest.TestCase):
                 self.assertIn(media_type, response.headers["Content-Type"])
                 self.assertTrue(response.read())
         with urlopen(self.base_url + "/api/config", timeout=5) as response:
-            self.assertEqual(json.load(response)["parameters"], CASE_PARAMETERS)
+            config = json.load(response)
+            self.assertEqual(config["parameters"], CASE_PARAMETERS)
+            self.assertEqual(config["modulations"], MODULATION_OPTIONS)
+            self.assertEqual(config["default_modulation"], "4-QAM")
+
+    def test_modulation_selection_and_reset_through_api(self):
+        with self.post({"modulation": "64-QAM"}) as response:
+            changed = json.load(response)
+        self.assertEqual(changed["inputs"]["modulation"], "64-QAM")
+        self.assertEqual(changed["modulation"], "64-QAM")
+        self.assertEqual(changed["downlink"]["bits_per_symbol"], 6)
+        with self.post({}) as response:
+            reset = json.load(response)
+        self.assertEqual(reset["modulation"], "4-QAM")
+        self.assertEqual(reset["downlink"]["bits_per_symbol"], 2)
 
     def test_slider_update_and_reset(self):
         with self.post({"spacecraft_transmitter_power_w": 300}) as response:
@@ -199,6 +235,8 @@ class DashboardApiTests(unittest.TestCase):
             {"spacecraft_transmitter_power_w": 851},
             {"receiver_loss_factor": float("nan")},
             {"transmitter_loss_factor": True}, {"unknown": 10}, [],
+            {"modulation": "16-QAM"}, {"modulation": None},
+            {"modulation": 64}, {"modulation": ["64-QAM"]},
         ):
             with self.subTest(data=data):
                 with self.assertRaises(HTTPError) as caught:

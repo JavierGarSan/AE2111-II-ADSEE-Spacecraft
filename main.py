@@ -207,23 +207,33 @@ def distance_other_orbit(orbiting_body, satellite_altitude, minimum_elevation_an
     return distance
 #print(f"distance to mars would be: {distance_other_orbit("mars", 300, math.pi/6, 150/180*math.pi)}")
 
-def required_eb_n0(ber, coding):
-    """Required Eb/N0 per information bit, in dB, for 32-PSK."""
+def required_eb_n0(ber, coding, modulation="4-QAM"):
+    """Required Eb/N0 per information bit for Gray-coded square QAM in AWGN.
+
+    For M = 4 and k = log2(M), BER = Q(sqrt(2 * Eb/N0)) is exact.
+    For M = 64, use the low-BER nearest-neighbour approximation:
+    BER ~= (4/k) * (1 - 1/sqrt(M)) * Q(sqrt(3*k*Eb/N0/(M-1))).
+    This is the leading term of the square-QAM BER expression documented at
+    https://www.mathworks.com/help/comm/ug/analytical-expressions-used-in-berawgn-function-and-bit-error-rate-analysis-app.html
+
+    The existing coded/LDPC options retain their assumed 10 dB coding gain;
+    they do not model a particular code's measured BER performance.
+    """
 
     coding = coding.lower()
     if coding not in ("uncoded", "coded", "ldpc"):
         raise ValueError("Choose 'uncoded', 'coded', or 'ldpc'.")
     if not math.isfinite(ber) or not 0 < ber <= 1e-3:
         raise ValueError("Use a BER between 0 and 1e-3.")
+    if modulation not in ("4-QAM", "64-QAM"):
+        raise ValueError("Choose '4-QAM' or '64-QAM'.")
 
-    bits_per_symbol = 5
-    q_inverse = -NormalDist().inv_cdf(
-        ber * bits_per_symbol / 2
-    )
+    modulation_order = 4 if modulation == "4-QAM" else 64
+    bits_per_symbol = math.log2(modulation_order)
+    ber_coefficient = 4 / bits_per_symbol * (1 - 1 / math.sqrt(modulation_order))
+    q_inverse = -NormalDist().inv_cdf(ber / ber_coefficient)
 
-    eb_n0_linear = q_inverse**2 / (
-        2 * bits_per_symbol * math.sin(math.pi / 32)**2
-    )
+    eb_n0_linear = q_inverse**2 * (modulation_order - 1) / (3 * bits_per_symbol)
     required_db = 10 * math.log10(eb_n0_linear)
 
     coding_gain_db = 0.0 if coding == "uncoded" else 10.0

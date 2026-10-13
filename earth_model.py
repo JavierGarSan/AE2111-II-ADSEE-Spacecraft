@@ -62,7 +62,7 @@ CASE_PARAMETERS = [
                100, 0, 100, 1, True),
     _parameter("payload_downlink_hours", "Payload downlink time", "hr/day",
                0.5, 0.1, 24, 0.1, True),
-    _parameter("coding", "Modulation/coding type", "−", "uncoded", 0, 2, 1,
+    _parameter("coding", "Channel coding", "−", "uncoded", 0, 2, 1,
                True, choices=["uncoded", "coded", "ldpc"]),
     _parameter("required_ber", "Required BER", "−",
                1e-6, 1e-9, 1e-3, 1e-9, True),
@@ -78,7 +78,8 @@ GROUND_ANTENNA_NOISE_K = 100.0
 RECEIVER_NOISE_FIGURE_DB = 2.0
 CABLE_PHYSICAL_K = 290.0
 GROUND_POINTING_OFFSET_DEG = 0.0
-BITS_PER_SYMBOL = 5  # The existing required_eb_n0() model uses 32-PSK.
+DEFAULT_MODULATION = "4-QAM"
+MODULATION_OPTIONS = ["4-QAM", "64-QAM"]
 
 ASSUMPTIONS = [
     "Circular Earth orbit; spherical, non-rotating Earth; nadir line-scanning "
@@ -92,8 +93,10 @@ ASSUMPTIONS = [
     "offset applies to the spacecraft antenna.",
     "Atmospheric and rain attenuation use the existing model's simplified "
     "frequency bands; antenna noise temperatures stay constant.",
-    "The existing required Eb/N0 approximation assumes 32-PSK; the table "
-    "specifies uncoded operation but does not specify the modulation order.",
+    "The selected Gray-coded square QAM applies to both links in an AWGN "
+    "channel. 4-QAM uses the exact BER expression; 64-QAM uses its low-BER "
+    "nearest-neighbour approximation. Channel coding remains uncoded "
+    "as specified by the Earth case table.",
     "Eb/N0 is per information bit; encoded channel rate is shown separately. "
     "The existing coded/LDPC model uses code rate 3/4 and a 10 dB coding gain.",
     "The 850 W total is an upper bound on RF output only. Amplifier DC "
@@ -113,11 +116,14 @@ def validate_inputs(overrides=None):
         raise ValueError("Inputs must be an object containing case parameter values.")
 
     parameters = {entry["id"]: entry for entry in CASE_PARAMETERS}
-    unknown = set(overrides) - set(parameters)
+    unknown = set(overrides) - set(parameters) - {"modulation"}
     if unknown:
         raise ValueError("Unknown case parameter: " + ", ".join(sorted(unknown)))
 
-    result = {}
+    modulation = overrides.get("modulation", DEFAULT_MODULATION)
+    if modulation not in MODULATION_OPTIONS:
+        raise ValueError("Modulation must be '4-QAM' or '64-QAM'.")
+    result = {"modulation": modulation}
     for identifier, entry in parameters.items():
         value = overrides.get(identifier, entry["default"])
         if entry["locked"]:
@@ -188,17 +194,23 @@ def _link_budget(inputs, direction, frequency_ghz, information_rate_bps,
     )
     # G/T is referred to the antenna terminals, so the receive cable loss is
     # already reflected in receiver noise and must not be subtracted again.
-    required_eb_n0_db = model.required_eb_n0(inputs["required_ber"], inputs["coding"])
+    modulation_order = 4 if inputs["modulation"] == "4-QAM" else 64
+    bits_per_symbol = int(math.log2(modulation_order))
+    required_eb_n0_db = model.required_eb_n0(
+        inputs["required_ber"], inputs["coding"], inputs["modulation"]
+    )
     available_eb_n0_db = model.energy_per_bit(
         eirp_dbw, free_space_loss_db, other_losses_db,
         receiver["g_over_t_db_per_k"], information_rate_bps,
     )
     channel_rate_bps = model.transmitted_bit_rate(information_rate_bps, inputs["coding"])
-    symbol_rate_baud = channel_rate_bps / BITS_PER_SYMBOL
+    symbol_rate_baud = channel_rate_bps / bits_per_symbol
     return {
         "frequency_ghz": frequency_ghz,
         "information_rate_bps": information_rate_bps,
         "transmitted_rate_bps": channel_rate_bps,
+        "modulation_order": modulation_order,
+        "bits_per_symbol": bits_per_symbol,
         "symbol_rate_baud": symbol_rate_baud,
         "minimum_passband_bandwidth_hz": symbol_rate_baud,
         "transmitter_power_w": power_w,
@@ -257,13 +269,14 @@ def calculate_earth(overrides=None):
         warnings.append(
             "The downlink needs at least "
             f"{downlink['minimum_passband_bandwidth_hz'] / 1e9:.2f} GHz of "
-            "passband bandwidth for 32-PSK at ideal zero roll-off. This "
+            f"passband bandwidth for {inputs['modulation']} at ideal zero roll-off. This "
             "exceeds twice the carrier frequency: the assumed single-carrier "
             "S/X-band link cannot carry this payload rate, even if its "
             "calculated Eb/N0 margin is positive."
         )
     return {
         "scenario": "earth",
+        "modulation": inputs["modulation"],
         "inputs": inputs,
         "geometry": {
             "slant_range_km": slant_range_km,
@@ -286,5 +299,9 @@ def calculate_earth(overrides=None):
         "uplink": uplink,
         "downlink": downlink,
         "warnings": warnings,
-        "assumptions": list(ASSUMPTIONS),
+        "assumptions": [
+            *ASSUMPTIONS,
+            f"Selected modulation: {inputs['modulation']} "
+            f"({downlink['bits_per_symbol']} bits per symbol) for both links.",
+        ],
     }

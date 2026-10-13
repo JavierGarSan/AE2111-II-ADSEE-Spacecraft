@@ -4,11 +4,22 @@ const controls = document.querySelector("#parameters");
 const statusText = document.querySelector("#status");
 const errorText = document.querySelector("#error");
 const resetButton = document.querySelector("#reset");
+const modulationSelector = document.querySelector("#modulation");
+let defaultModulation;
 let parameters = [];
 let values = {};
 let timer;
 let requestNumber = 0;
 let activeRequest;
+
+function scheduleRecalculation() {
+  statusText.textContent = "Recalculating...";
+  // Invalidate any older response as soon as an input changes.
+  requestNumber += 1;
+  activeRequest?.abort();
+  clearTimeout(timer);
+  timer = setTimeout(recalculate, 120);
+}
 
 function numberText(value, digits = 3) {
   if (value === null || value === undefined) return "--";
@@ -64,12 +75,7 @@ function createControls() {
     slider.addEventListener("input", () => {
       values[parameter.id] = parameter.choices ? parameter.choices[Number(slider.value)] : Number(slider.value);
       setOutput(parameter);
-      statusText.textContent = "Recalculating...";
-      // Invalidate any older response as soon as an input changes.
-      requestNumber += 1;
-      activeRequest?.abort();
-      clearTimeout(timer);
-      timer = setTimeout(recalculate, 120);
+      scheduleRecalculation();
     });
 
     const limits = document.createElement("div");
@@ -104,7 +110,7 @@ function displayResults(result) {
     ["Frequency", "frequency_ghz", "GHz"],
     ["Information data rate", "information_rate_bps", "bit/s"],
     ["Transmitted data rate", "transmitted_rate_bps", "bit/s"],
-    ["Symbol rate (32-PSK)", "symbol_rate_baud", "baud"],
+    [`Symbol rate (${result.modulation})`, "symbol_rate_baud", "baud"],
     ["Minimum passband bandwidth (zero roll-off)", "minimum_passband_bandwidth_hz", "Hz"],
     ["Transmitter power", "transmitter_power_w", "W"],
     ["Transmitter antenna gain", "transmitter_gain_dbi", "dBi"],
@@ -156,7 +162,7 @@ function displayResults(result) {
 }
 
 function displayError(error) {
-  const retry = parameters.length ? "change a slider or reset to retry" : "reload this page to retry";
+  const retry = parameters.length ? "change a slider or modulation, or reset to retry" : "reload this page to retry";
   errorText.textContent = `${error.message} Check that dashboard.py is still running, then ${retry}.`;
   errorText.hidden = false;
   statusText.textContent = "Results could not be updated. Any visible results are from the previous calculation.";
@@ -178,15 +184,22 @@ async function recalculate() {
     if (currentRequest !== requestNumber) return;
     displayResults(result);
     errorText.hidden = true;
-    statusText.textContent = "Results updated for the Earth case.";
+    statusText.textContent = `Results updated for the Earth case (${result.modulation}).`;
   } catch (error) {
     if (error.name !== "AbortError" && currentRequest === requestNumber) displayError(error);
   }
 }
 
+modulationSelector.addEventListener("change", () => {
+  values.modulation = modulationSelector.value;
+  scheduleRecalculation();
+});
+
 resetButton.addEventListener("click", () => {
   clearTimeout(timer);
   values = Object.fromEntries(parameters.map(parameter => [parameter.id, parameter.default]));
+  values.modulation = defaultModulation;
+  modulationSelector.value = defaultModulation;
   createControls();
   statusText.textContent = "Recalculating Earth defaults...";
   recalculate();
@@ -198,9 +211,20 @@ async function initialize() {
     if (!response.ok) throw new Error("Could not load the Earth inputs.");
     const config = await response.json();
     parameters = config.parameters;
+    defaultModulation = config.default_modulation;
+    modulationSelector.replaceChildren();
+    for (const modulation of config.modulations) {
+      const option = document.createElement("option");
+      option.value = modulation;
+      option.textContent = modulation;
+      modulationSelector.append(option);
+    }
+    modulationSelector.value = defaultModulation;
     values = Object.fromEntries(parameters.map(parameter => [parameter.id, parameter.default]));
+    values.modulation = defaultModulation;
     createControls();
     resetButton.disabled = false;
+    modulationSelector.disabled = false;
     await recalculate();
   } catch (error) {
     displayError(error);
