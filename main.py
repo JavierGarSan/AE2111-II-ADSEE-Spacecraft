@@ -16,8 +16,15 @@ pl_duty_cycle = 100 # % of each day spent collecting data
 pl_downlink_t = 0.5 # hr/day; available time to transmit the daily data
 
 # Physical assumptions: circular orbit and a spherical, non-rotating Earth.
+AU = 149597870.7    # km
 earthRadius = 6371 # km
 earth_mu = 398600.435507 # km^3/s^2; https://ssd.jpl.nasa.gov/astro_par.html
+moon_orbit_altitude = 384400 # km https://science.nasa.gov/moon/facts/#h-size-and-distance
+moon_radius = 1740 # km  same link
+mars_orbit_altitude = 228 * 10**6 # km https://science.nasa.gov/mars/facts/#h-size-and-distance
+mars_radius = 3390 # km  same link
+mercury_orbit_altitude = 46 *10**6 # km https://nssdc.gsfc.nasa.gov/planetary/factsheet/mercuryfact.html (at perihelion)
+mercury_radius = 2440.5 # km  same link
 seconds_per_day = 24 * 60 * 60
 
 #Assumptions - NOT IN FILE.
@@ -137,12 +144,37 @@ def pointing_angle_loss(frequency_ghz,offset_antenna_diameter_m, pointing_offset
 def energy_per_bit(EIRP, free_space_loss, All_other_losses, G_over_T, bitrate): # input in dB
     return EIRP - free_space_loss - All_other_losses + G_over_T - 10 * math.log10(k_b * bitrate)
 
-def distance_earth_orbit(satellite_altitude, minimum_elevation_angle):
+def distance_earth_orbit(satellite_altitude, minimum_elevation_angle): # input in km, output in km
     global earthRadius
     return earthRadius * (math.sqrt(((earthRadius + satellite_altitude)/earthRadius)**2 - math.cos(minimum_elevation_angle)**2) - math.sin(minimum_elevation_angle))
 
-def distance_other_orbit(orbit_altitude_orbiting_body, satellite_altitude, elongation_angle): #No reason for this.   
-    return 
+def distance_other_orbit(orbiting_body, satellite_altitude, minimum_elevation_angle, elongation_angle): # remember input angles in radians, input in km, output in km
+    if not isinstance(orbiting_body, str):
+        raise ValueError("Input orbiting body is not string")
+    orbiting_body = orbiting_body.lower()
+    if orbiting_body == "moon":
+        dist_satellite_to_surface_body = math.sqrt((satellite_altitude+moon_radius)**2 - moon_radius**2)
+        distance_to_moon = distance_earth_orbit(moon_orbit_altitude, minimum_elevation_angle)
+        dist_gs_to_surface_body = math.sqrt(distance_to_moon**2 - moon_radius**2)
+        distance = dist_satellite_to_surface_body + dist_gs_to_surface_body
+
+    elif orbiting_body == "mars":
+        dist_earth_to_body = math.sqrt(AU**2 + mars_orbit_altitude**2 - 2 * AU * mars_orbit_altitude * math.cos(elongation_angle))
+        dist_earth_to_surface_body = math.sqrt(dist_earth_to_body**2 - mars_radius**2)
+        dist_satellite_to_surface_body = math.sqrt((satellite_altitude+mars_radius)**2 - mars_radius**2)
+        gs_dist = math.sin(minimum_elevation_angle) * earthRadius
+        distance = dist_earth_to_surface_body + dist_satellite_to_surface_body - gs_dist
+
+    elif orbiting_body == "mercury":
+        dist_earth_to_body = math.sqrt(AU**2 + mercury_orbit_altitude**2 - 2 * AU * mercury_orbit_altitude * math.cos(elongation_angle))
+        dist_earth_to_surface_body = math.sqrt(dist_earth_to_body**2 - mercury_radius**2)
+        dist_satellite_to_surface_body = math.sqrt((satellite_altitude+mercury_radius)**2 - mercury_radius**2)
+        gs_dist = math.sin(minimum_elevation_angle) * earthRadius
+        distance = dist_earth_to_surface_body + dist_satellite_to_surface_body - gs_dist
+    else:
+        raise ValueError("Input orbiting body is not supported")
+    return distance
+#print(f"distance to mars would be: {distance_other_orbit("mars", 300, math.pi/6, 150/180*math.pi)}")
 
 def required_eb_n0(ber, coding):
     """Required Eb/N0 per information bit, in dB, for 32-PSK."""
@@ -231,7 +263,7 @@ def rain_attenuation_noise(frequency): #in dB, super simplified
         return 2.86
     elif (frequency<=(5*(10**9))):
         return 0
-    raise ValueError("The frequency isnt represented the program (only bellow 12 GHz)")
+    raise ValueError("The frequency isnt represented the program (only below 12 GHz)")
 
 def link_margin(available_eb_n0_db, required_eb_n0_db):
     """Return available minus required Eb/N0, in dB."""
