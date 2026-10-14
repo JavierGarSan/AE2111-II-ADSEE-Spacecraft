@@ -204,7 +204,8 @@ function displayResults(result) {
     document.querySelector(`#${direction}-margin`).textContent = margin === null ? "--" : `${numberText(margin, 2)} dB`;
     document.querySelector(`#${direction}-verdict`).textContent = margin === null ? "No downlink data" : margin >= 3 ? "At least 3 dB Eb/N0 margin" : margin >= 0 ? "Less than 3 dB Eb/N0 margin" : "Below required Eb/N0";
   }
-  document.querySelector("#downlink-rate").textContent = `${numberText(result.payload.required_downlink_rate_bps)} bit/s`;
+  document.querySelector("#downlink-rate").textContent = `${numberText(result.downlink.transmitted_rate_bps)} bit/s`;
+  document.querySelector("#downlink-information-rate").textContent = `Payload information: ${numberText(result.downlink.information_rate_bps)} bit/s`;
   document.querySelector("#daily-data").textContent = `${numberText(result.payload.daily_data_tb, 2)} TB`;
   document.querySelector("#active-rate").textContent = `Active camera: ${numberText(result.payload.active_rate_bps)} bit/s`;
   const body = result.planet_label || selectedPlanetLabel();

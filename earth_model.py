@@ -77,7 +77,7 @@ SPACECRAFT_ANTENNA_NOISE_K = 290.0
 GROUND_ANTENNA_NOISE_K = 100.0
 RECEIVER_NOISE_FIGURE_DB = 2.0
 CABLE_PHYSICAL_K = 290.0
-GROUND_POINTING_OFFSET_DEG = 0.0
+GROUND_POINTING_OFFSET_DEG = 0.05
 DEFAULT_MODULATION = "4-QAM"
 MODULATION_OPTIONS = ["4-QAM", "64-QAM"]
 ENCODING_OPTIONS = ["uncoded", "ldpc"]
@@ -263,7 +263,7 @@ def _link_budget(inputs, direction, frequency_ghz, information_rate_bps,
     rain_loss_db = model.rain_attenuation_noise(frequency_ghz * 1e9)
     spacecraft_pointing_loss_db = model.pointing_angle_loss(
         frequency_ghz, inputs["spacecraft_antenna_diameter_m"],
-        inputs["spacecraft_pointing_offset_deg"],
+        inputs["spacecraft_pointing_offset_deg"],        
     )
     ground_pointing_loss_db = model.pointing_angle_loss(
         frequency_ghz, inputs["ground_antenna_diameter_m"],

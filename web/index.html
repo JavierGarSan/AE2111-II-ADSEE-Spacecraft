@@ -16,12 +16,12 @@
         <select id="templates" disabled></select>
       </div>
     </div>
-    <p id="scenario-heading">AE2111-II homework tool / Earth orbit</p>
+    <p id="scenario-heading">AE2111-II homework tool.</p>
     <hr>
 
     <section aria-labelledby="input-heading">
       <div class="section-heading">
-        <h2 id="input-heading">Table 1 inputs</h2>
+        <h2 id="input-heading">Inputs</h2>
         <button type="button" id="reset" disabled>Reset inputs</button>
       </div>
       <div class="selector-control planet-control">
@@ -43,7 +43,7 @@
     <div class="selector-control encoding-control">
       <label for="encoding">Encoding</label>
       <select id="encoding" aria-describedby="encoding-help" disabled></select>
-      <span id="encoding-help" class="selector-help">Applies to both links. LDPC uses the model's rate 3/4 and 10 dB coding gain.</span>
+      <span id="encoding-help" class="selector-help">Applies to both links. Rate-3/4 LDPC increases transmitted bit rate by 33.3%; the model assumes 10 dB coding gain.</span>
     </div>
 
     <section aria-labelledby="results-heading">
@@ -55,7 +55,7 @@
       <div class="summary-grid">
         <div class="summary"><span>Uplink margin</span><strong id="uplink-margin">--</strong><span id="uplink-verdict">--</span></div>
         <div class="summary"><span>Downlink margin</span><strong id="downlink-margin">--</strong><span id="downlink-verdict">--</span></div>
-        <div class="summary"><span>Required downlink rate</span><strong id="downlink-rate">--</strong><span>Payload information rate</span></div>
+        <div class="summary"><span>Required downlink transmit rate</span><strong id="downlink-rate">--</strong><span id="downlink-information-rate">Payload information: --</span></div>
         <div class="summary"><span>Data collected per day</span><strong id="daily-data">--</strong><span id="active-rate">--</span></div>
       </div>
       <p id="geometry">Slant range: --</p>

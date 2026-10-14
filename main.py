@@ -252,6 +252,12 @@ def required_eb_n0(ber, coding, modulation="4-QAM"):
     return required_db - coding_gain_db
 
 def transmitted_bit_rate(information_rate_bps, coding="uncoded"):
+    """Return channel bit/s, including coding overhead, for either link.
+
+    Rate-3/4 LDPC sends four channel bits per three information bits:
+    R_channel = R_information / (3/4). Decoding recovers information at
+    R_information = R_channel * (3/4). Payload generation is unchanged.
+    """
     if information_rate_bps < 0:
         raise ValueError("Information rate must be nonnegative.")
 
