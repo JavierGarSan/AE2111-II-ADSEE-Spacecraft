@@ -346,12 +346,26 @@ def _range_geometry(inputs):
         }
     if planet == "moon":
         return {
-            "slant_range_km": PLANET_CONSTANTS[planet]["earth_distance_km"],
-            "range_method": "Mean Earth-Moon centre distance approximation",
+            "slant_range_km": model.distance_other_orbit(
+                planet, inputs["orbit_altitude_km"],
+                math.radians(MINIMUM_ELEVATION_DEG), 0.0,
+            ),
+            "range_method": "Earth-station to lunar orbit; tangent-geometry approximation at 20-degree elevation",
             "effective_elongation_deg": None,
         }
     elongation = inputs["elongation_angle_deg"]
     effective_elongation = 180.0 if elongation is None else elongation
+    if planet in ("mars", "mercury"):
+        return {
+            "slant_range_km": model.distance_other_orbit(
+                planet, inputs["orbit_altitude_km"],
+                math.radians(MINIMUM_ELEVATION_DEG),
+                math.radians(effective_elongation),
+            ),
+            "range_method": "Earth-station to planetary orbit; tangent-geometry approximation at 20-degree elevation",
+            "effective_elongation_deg": effective_elongation,
+        }
+    # Venus is a custom body not supported by main.py's range helper.
     sun_distance_km = PLANET_CONSTANTS[planet]["sun_distance_km"]
     # The case table's angle is between spacecraft-Sun and Earth-Sun lines:
     # it is the central angle at the Sun, not apparent elongation at Earth.
@@ -406,8 +420,8 @@ def calculate_scenario(overrides=None):
     ]
     if planet != "earth":
         warnings.append(
-            "The ground station remains on Earth. Remote range is approximated "
-            "by centre-to-centre distance; spacecraft orbital phase, station "
+            "The ground station remains on Earth. Remote range uses simplified "
+            "geometry; spacecraft orbital phase, exact station "
             "position, body occultation, solar conjunction and contact "
             "availability are not calculated."
         )

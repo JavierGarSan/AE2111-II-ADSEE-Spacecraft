@@ -1,0 +1,628 @@
+\documentclass[10pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage{iftex}
+\ifPDFTeX\usepackage[utf8]{inputenc}\fi
+\usepackage[margin=15mm,footskip=7mm]{geometry}
+\usepackage{amsmath,amssymb,array,booktabs,longtable}
+\usepackage[hidelinks]{hyperref}
+\usepackage{microtype}
+
+\newcolumntype{P}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcommand{\code}[1]{\nolinkurl{#1}}
+\newcommand{\eqcell}[1]{\(\displaystyle #1\)}
+\newcommand{\source}[1]{\textit{#1}}
+\setlength{\tabcolsep}{4pt}
+\setlength{\LTpre}{8pt}
+\setlength{\LTpost}{8pt}
+\renewcommand{\arraystretch}{1.25}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{5pt}
+\emergencystretch=1.5em
+
+\begin{document}
+
+{\LARGE\bfseries Spacecraft telecommunications equations}\par
+{\large Equations and assumptions in \code{main.py}}\par
+\smallskip
+
+This reference records the implementation inspected on 14 October 2026.
+Table~\ref{tab:main-equations} covers all 22 calculation functions in
+\code{main.py}, including helpers that are not used by its default execution.
+Running that file calls \code{earth_model.calculate_earth()};
+Table~\ref{tab:adapter-equations} therefore includes the additional equations
+needed to assemble its printed link budgets. The equations describe the code
+as written; differences from the lecture slides are explicitly identified.
+
+\textbf{Sources.} S3 and S4 refer to the two supplied AE2111-II
+Telecommunications lecture PDFs. Slide numbers equal the PDFs' one-based page
+numbers. ``Code'' means an implemented expression without an explicit matching
+equation in those slides. ``Derived'' means an algebraic or geometric step
+used in the code. MW refers to the MathWorks source listed at the end.
+
+\textbf{Notation and units.} Unless stated otherwise, $R$ and $h$ are body
+radius and orbital altitude in km, $\mu$ is in km$^3$/s$^2$, $d$ is range,
+$D$ is antenna diameter in m, $f$ is frequency, and $\lambda$ is wavelength in m.
+$\alpha$ is station elevation and $\psi$ is the angle at the Sun between the
+Earth--Sun and body--Sun lines; trigonometric arguments are in radians.
+$\beta$ is the full cross-track field of view in degrees, $\delta$ is pixel
+angle in arcminutes, $b$ is bits per pixel, and $u$ is duty cycle in percent.
+$R_i$ and $R_c$ denote information and channel bit rates in bit/s.
+$\ell_t,\ell_r\in(0,1]$ are linear transmitter and receiver cable transmission
+factors, distinct from positive attenuation magnitudes $L$ in dB.
+Temperatures are in K. $\gamma=E_b/N_0$ is linear; $\Gamma=10\log_{10}\gamma$
+is in dB. Logarithms of dimensional quantities use their numerical values in
+the stated reference units, as in the code and slides.
+
+\small
+\begin{longtable}{@{}P{0.22\linewidth}P{0.43\linewidth}P{0.30\linewidth}@{}}
+\caption{Equations implemented in \code{main.py}.}
+\label{tab:main-equations}\\
+\toprule
+Quantity / function & Implemented equation & Source and conditions \\
+\midrule
+\endfirsthead
+\multicolumn{3}{@{}l}{\textit{Table \thetable\ continued}}\\
+\toprule
+Quantity / function & Implemented equation & Source and conditions \\
+\midrule
+\endhead
+\midrule
+\multicolumn{3}{r@{}}{\textit{Continued on next page}}\\
+\endfoot
+\bottomrule
+\endlastfoot
+
+Circular orbital period\par
+\code{orbital_period}
+& \eqcell{T_{\mathrm{orb}}=2\pi\sqrt{\frac{(R+h)^3}{\mu}}}
+& \source{Code; circular Keplerian orbit.}
+Output in s. Used by the ground-track helper, which the default budget does
+not call. \\
+
+Circular orbital speed\par
+\code{orbital_speed}
+& \eqcell{v_{\mathrm{orb}}=10^3\sqrt{\frac{\mu}{R+h}}}
+& \source{Code; circular Keplerian orbit.}
+The $10^3$ converts km/s to m/s. This is the scan speed used for the payload. \\
+
+Nadir ground-track speed\par
+\code{ground_track_speed}
+& \eqcell{\begin{aligned}
+v_g&=\frac{2\pi R\,10^3}{T_{\mathrm{orb}}}\\
+&=v_{\mathrm{orb}}\frac{R}{R+h}
+\end{aligned}}
+& \source{Derived; non-rotating spherical body.}
+Available helper; not used by the default payload calculation. \\
+
+Angular conversion and nadir pixel size\par
+\code{ground_pixel_size}
+& \eqcell{\begin{aligned}
+\theta_p&=\frac{\delta\pi}{180\cdot60},\\
+s_p&=2h\,10^3\tan(\theta_p/2)
+\end{aligned}}
+& \source{Code; local flat-surface geometry.}
+Output $s_p$ in m; square angular pixels. \\
+
+Pixels per line\par
+\code{pixels_per_line}
+& \eqcell{N_x=\left\lceil\frac{60\beta}{\delta}\right\rceil}
+& \source{Code.}
+Counts angular pixels across the full field of view; rounds upward to an
+integer. \\
+
+Active payload rate\par
+\code{payload_data_rate}
+& \eqcell{\begin{aligned}
+f_{\mathrm{line}}&=\frac{v_{\mathrm{orb}}}{s_p},\\
+R_{\mathrm{payload}}&=N_x f_{\mathrm{line}}b
+\end{aligned}}
+& \source{Code; nadir pushbroom camera.}
+One row per along-track pixel. Orbital speed approximates ground scan speed;
+no compression or packet overhead. \\
+
+Daily raw data\par
+\code{daily_data_generated}
+& \eqcell{V_{\mathrm{day}}=R_{\mathrm{payload}}\,86400\,\frac{u}{100}}
+& \source{Derived from rate $\times$ time.}
+Output in bits; $0\le u\le100$. \\
+
+Required downlink information rate\par
+\code{required_downlink_rate}
+& \eqcell{R_{i,\mathrm{DL}}=\frac{V_{\mathrm{day}}}{3600\,t_{\mathrm{DL}}}}
+& \source{Derived from data / contact time.}
+$t_{\mathrm{DL}}$ in hr/day. This is an average over the assumed daily
+transmission time, before coding overhead. \\
+
+Atmospheric attenuation\par
+\code{atmospheric_attenuation_noise}
+& \eqcell{L_a(f)=\begin{cases}
+0.15,&0<f\le5\cdot10^9,\\
+0.20,&5\cdot10^9<f\le10^{10},\\
+0.75,&f>10^{10}
+\end{cases}}
+& \source{Code approximation; S4, slides 15--16 provide context.}
+$f$ in Hz; output in dB. Fixed at an assumed $20^\circ$ elevation.
+The slide equation $A=A_{90^\circ}/\sin\alpha$ is not evaluated. \\
+
+Linear to decibels\par
+\code{n_dB}
+& \eqcell{x_{\mathrm{dB}}=10\log_{10}(x/1)}
+& \source{S3, slide 14.}
+$x>0$. For power entered in W, the result is dBW; for a dimensionless factor,
+it is dB. \\
+
+Decibels to linear\par
+\code{dB_n}
+& \eqcell{x=10^{x_{\mathrm{dB}}/10}}
+& \source{Inverse of S3, slide 14.}
+Unit reference is 1. Available helper; not used by the default budget. \\
+
+Parabolic antenna gain\par
+\code{antenna_gain}
+& \eqcell{G_{\mathrm{dBi}}=10\log_{10}\!\left[\eta
+\left(\frac{\pi D}{\lambda}\right)^2\right]}
+& \source{S4, slide 24.}
+$\eta$ is the supplied efficiency. The active adapter assumes $\eta=0.6$;
+the example on slide 34 uses 0.55. \\
+
+Free-space attenuation\par
+\code{freespaceloss}
+& \eqcell{L_{\mathrm{FS}}=20\log_{10}\!\left(\frac{4\pi d}{\lambda}\right)}
+& \source{S3, slide 30; S4, slides 8 and 10.}
+$d,\lambda$ in m. Positive attenuation is subtracted from the budget.
+The function rejects negative calculated attenuation; the model assumes
+far-field free-space propagation. \\
+
+Beamwidth and pointing attenuation\par
+\code{pointing_angle_loss}
+& \eqcell{\begin{aligned}
+\theta_{3\mathrm{dB}}&=\frac{21}{f_{\mathrm{GHz}}D},\\
+L_p&=12\left(\frac{\theta_{\mathrm{off}}}
+{\theta_{3\mathrm{dB}}}\right)^2
+\end{aligned}}
+& \source{Beamwidth: S4, slide 34. Pointing-loss fit: code.}
+Angles in degrees. The code treats $21/(fD)$ as the full half-power beamwidth;
+the quadratic loss fit is an approximation. Evaluate for both antennas. \\
+
+Available energy-per-bit ratio\par
+\code{energy_per_bit}
+& \eqcell{\begin{aligned}
+\Gamma_{\mathrm{avail}}
+&=\mathrm{EIRP}-L_{\mathrm{FS}}-L_x\\
+&\quad +(G/T)-10\log_{10}(k_B R_i)
+\end{aligned}}
+& \source{S4, slide 59.}
+EIRP in dBW, $G/T$ in dB/K, losses in dB, $R_i>0$ in bit/s.
+$k_B=1.380649\times10^{-23}$ J/K. Uses information-bit energy. \\
+
+Earth slant range\par
+\code{distance_earth_orbit}
+& \eqcell{d_E=R_E\!\left[\sqrt{\left(\frac{R_E+h}{R_E}\right)^2
+-\cos^2\alpha}-\sin\alpha\right]}
+& \source{S4, slide 10.}
+Distances in km; $\alpha$ in radians. The active Earth case uses the minimum
+elevation $20^\circ$. \\
+
+Lunar tangent-path range\par
+\code{distance_other_orbit}, Moon branch
+& \eqcell{\begin{aligned}
+d_M&=d_E(h_M,\alpha),\\
+d&=\sqrt{(R_M+h)^2-R_M^2}\\
+&\quad +\sqrt{d_M^2-R_M^2}
+\end{aligned}}
+& \source{Code; tangent geometry.}
+$h_M=384400$ km is passed to the Earth-altitude formula; $R_M=1740$ km.
+This helper is not called by the current adapter. \\
+
+Planetary tangent-path range\par
+\code{distance_other_orbit}, Mars / Mercury branches
+& \eqcell{\begin{aligned}
+d_{EP}&=\sqrt{a_E^2+a_P^2-2a_Ea_P\cos\psi},\\
+d&=\sqrt{d_{EP}^2-R_P^2}\\
+&\quad +\sqrt{(R_P+h)^2-R_P^2}\\
+&\quad -R_E\sin\alpha
+\end{aligned}}
+& \source{Code; cosine rule and tangent geometry.}
+Distances in km, angles in radians, $a_E=1$ AU.
+Only Mars and Mercury are supported here. The current adapter uses a
+different range approximation; see Table~\ref{tab:adapter-equations}. \\
+
+QAM parameters and inverse Gaussian tail\par
+\code{required_eb_n0}
+& \eqcell{\begin{aligned}
+m&=\log_2 M,\\
+A_M&=\frac{4}{m}\left(1-\frac{1}{\sqrt M}\right),\\
+q&=Q^{-1}(p_b/A_M)\\
+&=-\Phi^{-1}(p_b/A_M)
+\end{aligned}}
+& \source{Code; MW, square-QAM analysis.}
+$M\in\{4,64\}$; target BER $0<p_b\le10^{-3}$.
+$Q(x)=1-\Phi(x)$, with $\Phi$ the standard-normal CDF.
+The leading BER term is $p_b\simeq A_M Q(\sqrt{3m\gamma/(M-1)})$. \\
+
+Required uncoded and coded $E_b/N_0$\par
+\code{required_eb_n0} (continued)
+& \eqcell{\begin{aligned}
+\gamma_{\mathrm{req}}&=\frac{M-1}{3m}\,q^2,\\
+\Gamma_{\mathrm{req}}&=10\log_{10}\gamma_{\mathrm{req}}-G_c,\\
+G_c&=\begin{cases}
+0,&\text{uncoded},\\
+10,&\text{coded or LDPC}
+\end{cases}
+\end{aligned}}
+& \source{QAM inversion: code / MW. Coding gain: S4, slide 72.}
+For 4-QAM, $p_b=Q(\sqrt{2\gamma})$ is exact in the assumed channel.
+For 64-QAM, the low-BER approximation is used. A fixed gain replaces a
+code-specific BER model. \\
+
+Channel bit rate\par
+\code{transmitted_bit_rate}
+& \eqcell{\begin{aligned}
+R_c&=R_i/r_c,\\
+r_c&=\begin{cases}
+1,&\text{uncoded},\\
+3/4,&\text{coded or LDPC}
+\end{cases}
+\end{aligned}}
+& \source{S4, slide 72; derived rate conversion.}
+Coding adds $33\frac{1}{3}\%$ channel bits for rate $3/4$; generated payload
+data remain unchanged. \\
+
+Noise factor and receiver noise\par
+\code{receiver_noise_and_gt}
+& \eqcell{\begin{aligned}
+F&=10^{NF/10},\\
+T_{\mathrm{rx}}&=T_0(F-1)
+\end{aligned}}
+& \source{S3, slide 37; dB conversion from slide 14.}
+$NF$ in dB. $T_{\mathrm{rx}}$ is referred to the receiver's own input. \\
+
+Antenna-referred cable and receiver noise\par
+\code{receiver_noise_and_gt} (continued)
+& \eqcell{\begin{aligned}
+T_{c,A}&=T_c(1/\ell_r-1),\\
+T_{\mathrm{rx},A}&=T_{\mathrm{rx}}/\ell_r
+\end{aligned}}
+& \source{Cable noise: S3, slide 38. Receiver referral: code.}
+The receiver contribution is divided by the preceding cable's transmission
+factor to refer it to the antenna terminals. \\
+
+System noise and receiving figure of merit\par
+\code{receiver_noise_and_gt} (continued)
+& \eqcell{\begin{aligned}
+T_s&=T_A+T_{c,A}+T_{\mathrm{rx},A},\\
+(G/T)&=G_{r,\mathrm{dBi}}-10\log_{10}T_s
+\end{aligned}}
+& \source{S3, slides 43--44 and 48, with a code difference.}
+Slides 43--44 print $T_0(F-1)$ without $1/\ell_r$; the code includes that
+referral factor. Receive cable loss is already represented in this $G/T$. \\
+
+Rain attenuation\par
+\code{rain_attenuation_noise}
+& \eqcell{L_r(f)=\begin{cases}
+0,&f\le5\cdot10^9,\\
+2.86,&5\cdot10^9<f<12\cdot10^9
+\end{cases}}
+& \source{Code approximation; S4, slides 17--20 provide context.}
+$f$ in Hz; output in dB. The helper raises an error at $f\ge12$ GHz.
+No location, rain zone or availability probability is supplied. \\
+
+Link margin\par
+\code{link_margin}
+& \eqcell{\mathcal M=\Gamma_{\mathrm{avail}}-\Gamma_{\mathrm{req}}}
+& \source{Code; S4, slide 84 discusses design margin.}
+Output in dB. The slide's suggested $3$ dB margin is not an enforced criterion
+in this function. \\
+\end{longtable}
+
+\begin{longtable}{@{}P{0.22\linewidth}P{0.43\linewidth}P{0.30\linewidth}@{}}
+\caption{Additional equations in \code{earth_model.py} called by the
+\code{main.py} entry point.}
+\label{tab:adapter-equations}\\
+\toprule
+Quantity / location & Equation & Source and conditions \\
+\midrule
+\endfirsthead
+\multicolumn{3}{@{}l}{\textit{Table \thetable\ continued}}\\
+\toprule
+Quantity / location & Equation & Source and conditions \\
+\midrule
+\endhead
+\midrule
+\multicolumn{3}{r@{}}{\textit{Continued on next page}}\\
+\endfoot
+\bottomrule
+\endlastfoot
+
+Uplink frequency\par
+\code{calculate_scenario}
+& \eqcell{f_{\mathrm{UL}}=\tau f_{\mathrm{DL}}}
+& \source{Code / mission input.}
+$\tau$ is defined as uplink frequency divided by downlink frequency. \\
+
+Wavelength\par
+\code{_link_budget}
+& \eqcell{\lambda=\frac{c}{10^9f_{\mathrm{GHz}}}}
+& \source{Derived from $c=f\lambda$.}
+$c=299792458$ m/s. Both links use their own carrier wavelength. \\
+
+Transmitter cable loss and EIRP\par
+\code{_link_budget}
+& \eqcell{\begin{aligned}
+L_t&=-10\log_{10}\ell_t,\\
+\mathrm{EIRP}&=10\log_{10}P_t+G_t-L_t
+\end{aligned}}
+& \source{S3, slide 49, using positive loss magnitudes.}
+$P_t$ in W. Uplink transmitter: ground station; downlink transmitter:
+spacecraft. \\
+
+Other propagation / pointing losses\par
+\code{_link_budget}
+& \eqcell{L_x=L_a+L_r+L_{p,\mathrm{SC}}+L_{p,\mathrm{GS}}}
+& \source{Code; loss aggregation in S4, slide 59.}
+Includes pointing at both ends. Does not subtract the receive cable factor a
+second time. \\
+
+Carrier-to-noise density\par
+\code{_link_budget}
+& \eqcell{\begin{aligned}
+C/N_0&=\Gamma_{\mathrm{avail}}+10\log_{10}R_i\\
+&=\mathrm{EIRP}-L_{\mathrm{FS}}-L_x\\
+&\quad +(G/T)-10\log_{10}k_B
+\end{aligned}}
+& \source{Derived from S3, slide 29 and S4, slide 59.}
+Output in dB-Hz. The second expression remains defined for zero information
+rate; $E_b/N_0$ and margin then return \code{None}. \\
+
+Symbol rate and ideal minimum passband bandwidth\par
+\code{_link_budget}
+& \eqcell{\begin{aligned}
+m&=\log_2 M,\\
+R_s&=R_c/m,\\
+B_{\min}&=R_s
+\end{aligned}}
+& \source{Code; S4, slides 54--55 support bits per symbol.}
+Ideal zero pulse-shaping roll-off. No available channel bandwidth is an input.
+For a raised-cosine model, nonzero roll-off would increase occupied bandwidth. \\
+
+Actual remote-body range used by adapter\par
+\code{_range_geometry}
+& \eqcell{\begin{aligned}
+d_{\mathrm{Moon}}&=384400\ \mathrm{km},\\
+d_{EP}&=\sqrt{a_E^2+a_P^2-2a_Ea_P\cos\psi}
+\end{aligned}}
+& \source{Code; centre-distance approximation.}
+The cosine-rule expression is used for Mars, Venus and Mercury. If $\psi$ is
+unset, the adapter uses $180^\circ$. These replace the unused tangent-path
+helper in \code{main.py}. \\
+
+Daily decimal terabytes\par
+\code{calculate_scenario}
+& \eqcell{V_{\mathrm{TB}}=\frac{V_{\mathrm{day}}}{8\cdot10^{12}}}
+& \source{Unit conversion.}
+Eight bits per byte; decimal TB, not binary TiB. \\
+\end{longtable}
+
+\normalsize
+\textbf{Assumptions and fixed choices.}
+The following table distinguishes modelling choices from mission inputs.
+Values from \code{earth_model.py} matter because that file supplies the
+defaults when \code{main.py} is run. Code comments claiming an assumption is
+permitted by the assignment are recorded as code comments; the assignment
+itself was not supplied here.
+
+\small
+\begin{longtable}{@{}P{0.23\linewidth}P{0.46\linewidth}P{0.26\linewidth}@{}}
+\caption{Assumptions found in the implementation.}
+\label{tab:assumptions}\\
+\toprule
+Topic & Assumption / selected value & Evidence and consequence \\
+\midrule
+\endfirsthead
+\multicolumn{3}{@{}l}{\textit{Table \thetable\ continued}}\\
+\toprule
+Topic & Assumption / selected value & Evidence and consequence \\
+\midrule
+\endhead
+\midrule
+\multicolumn{3}{r@{}}{\textit{Continued on next page}}\\
+\endfoot
+\bottomrule
+\endlastfoot
+
+Orbit and body
+& Circular orbit; spherical, non-rotating body; fixed gravitational parameter
+and radius.
+& \code{main.py} physical-assumptions comment and orbital helpers. No rotation,
+eccentricity or orbital perturbations enter the payload estimate. \\
+
+Camera model
+& Nadir pushbroom imaging; square angular pixels; one row per along-track
+pixel; the nadir pixel footprint is computed on a local flat surface.
+& \code{ground_pixel_size} and \code{payload_data_rate} docstrings. The angular
+swath/pixel ratio sets the cross-track pixel count. \\
+
+Scan velocity
+& $v_{\mathrm{scan}}=v_{\mathrm{orb}}$, rather than the projected ground-track
+speed $v_g$.
+& Explicit \code{payload_data_rate} approximation. At the Earth defaults,
+$v_{\mathrm{orb}}/v_g=(R_E+h)/R_E\simeq1.129$; rates are about $12.9\%$ higher
+than with the unused ground-track helper. \\
+
+Payload volume and contact
+& Raw data only; no compression or packet/protocol overhead. The assumed daily
+contact time is fully available to transmit one day's collected data at a
+constant average rate.
+& Rate and volume helpers; \code{calculate_scenario} assumptions. Contact
+availability and the compatibility of imaging with antenna pointing are not
+computed. FEC overhead is handled separately. \\
+
+Elevation and geometry
+& Minimum station elevation is fixed to $20^\circ$. The Earth budget uses the
+range at that elevation for both directions.
+& \code{MINIMUM_ELEVATION_DEG} and \code{distance_earth_orbit}. Atmospheric
+losses also assume $20^\circ$ but do not accept elevation as an argument. \\
+
+Antenna properties
+& Both antennas are modelled as parabolic with $\eta=0.6$, independent of
+frequency. The same dish diameters are used for transmitting and receiving.
+& \code{ANTENNA_EFFICIENCY} and \code{_link_budget}. Efficiency is separate
+from cable transmission factors. Slide 34's example uses $\eta=0.55$. \\
+
+Pointing
+& The selected spacecraft offset is used in both links. The active ground
+offset is $0.01^\circ$. Each loss uses the approximate full beamwidth and
+quadratic pointing fit in Table~\ref{tab:main-equations}.
+& \code{GROUND_POINTING_OFFSET_DEG = 0.01}. The \code{ASSUMPTIONS} text says
+$0^\circ$ and \code{dashboard.md} says ideal ground pointing; both disagree
+with the executed constant. \\
+
+Receiver thermal model
+& Spacecraft antenna noise $T_A=290$ K; ground antenna noise $T_A=100$ K;
+$NF=2$ dB for either receiver; cable physical temperature $T_c=290$ K;
+reference temperature $T_0=290$ K.
+& Adapter constants and \code{receiver_noise_and_gt} defaults. Noise and $G/T$
+are referred to the antenna terminals. Additional receiver stages are
+represented by the single aggregate noise figure. \\
+
+Atmosphere and rain
+& Frequency-band constant losses: $L_a=0.15$, $0.20$ or $0.75$ dB;
+$L_r=0$ or $2.86$ dB. Antenna noise temperatures remain fixed.
+& The two attenuation helpers return attenuation, despite ``noise'' in their
+names. No atmospheric/rain emission, weather distribution, rain-zone selection
+or availability calculation is included. \\
+
+Radio propagation
+& Far-field free-space spreading and the listed atmospheric, rain and pointing
+losses. No extra polarization mismatch, interference, multipath or
+implementation-loss term is included.
+& \code{freespaceloss} and adapter loss sum. These effects have no separate
+budget term. \\
+
+Modulation and BER
+& Coherent Gray-coded square QAM in additive white Gaussian noise (AWGN).
+4-QAM uses an exact uncoded BER expression; 64-QAM uses the low-BER
+nearest-neighbour approximation. The same selection applies to both links.
+& \code{required_eb_n0} docstring and adapter default $M=4$.
+Default target BER is a mission input, $10^{-6}$. \\
+
+Channel coding
+& Uncoded: $r_c=1$, $G_c=0$ dB. ``Coded'' and ``LDPC'': $r_c=3/4$,
+$G_c=10$ dB, independent of modulation and BER.
+& S4, slide 72 supplies the LDPC example. The implementation does not model
+a particular code, decoder or measured BER curve. The adapter exposes uncoded
+and LDPC choices. \\
+
+Energy and bandwidth conventions
+& Available and required $E_b/N_0$ are per information bit. Coding overhead
+changes channel rate and symbol rate. Minimum passband bandwidth equals symbol
+rate at ideal zero roll-off.
+& \code{_link_budget}. $R_i$, not $R_c$, enters \code{energy_per_bit}; coding
+gain is applied once. Bandwidth feasibility is not established by margin. \\
+
+Remote-body helper
+& The unused \code{distance_other_orbit} assumes tangent geometry and fixed
+Earth--Moon / heliocentric distances. Mars and Mercury use a geometric angle
+at the Sun.
+& \code{main.py} constants: Moon $384400$ km / radius $1740$ km;
+Mars $228\times10^6$ km / $3390$ km; Mercury $46\times10^6$ km / $2440.5$ km.
+The Moon distance is treated as an altitude argument in this helper. \\
+
+Active remote-body adapter
+& Moon uses mean centre distance. Planets use fixed heliocentric radii:
+Earth $1$ AU, Mars $228\times10^6$ km, Venus $108\times10^6$ km,
+Mercury $46\times10^6$ km (a fixed perihelion approximation).
+Unset angle defaults to $180^\circ$.
+& \code{_range_geometry}; not used in the default Earth case. Spacecraft
+orbital phase, station position, occultation, conjunction and contact
+availability are omitted. \\
+
+Power and margin
+& RF transmitter power is used directly. Total spacecraft power only limits
+RF output; amplifier DC efficiency and other subsystem loads are unspecified.
+The code reports available minus required $E_b/N_0$.
+& Adapter validation and budget. S4, slide 84 suggests at least $3$ dB design
+margin; the implementation does not enforce this allowance. \\
+\end{longtable}
+
+\normalsize
+\textbf{Default Earth mission inputs (not inferred physical assumptions).}
+These are assigned values in the code, labelled as mission-table inputs.
+Their original mission table was not among the two supplied lecture PDFs.
+
+\small
+\begin{longtable}{@{}P{0.47\linewidth}P{0.48\linewidth}@{}}
+\caption{Default inputs used by the Earth entry point.}\\
+\toprule
+Input & Value \\
+\midrule
+\endfirsthead
+\toprule
+Input & Value \\
+\midrule
+\endhead
+\bottomrule
+\endlastfoot
+Orbital altitude & $h=820$ km \\
+Camera field of view / angular pixel & $\beta=45^\circ$ full cross-track;
+$\delta=0.01$ arcmin \\
+Bits per pixel / imaging duty cycle & $b=32$ bits total across channels;
+$u=100\%$ \\
+Daily downlink time & $t_{\mathrm{DL}}=0.5$ hr/day \\
+Required uplink information rate & $R_{i,\mathrm{UL}}=10^8$ bit/s \\
+Spacecraft / ground RF transmitter power & $150$ W / $400$ W \\
+Transmitter / receiver cable transmission & $\ell_t=0.8$ / $\ell_r=0.7$ \\
+Downlink frequency / turnaround ratio & $f_{\mathrm{DL}}=2.2$ GHz;
+$\tau=221/240$ \\
+Spacecraft / ground antenna diameter & $D_{\mathrm{SC}}=1$ m /
+$D_{\mathrm{GS}}=15$ m \\
+Spacecraft pointing offset & $0.12^\circ$ \\
+Coding / required BER & Uncoded / $p_b=10^{-6}$ \\
+Adapter modulation default & 4-QAM ($M=4$, two bits per symbol) \\
+Adapter total spacecraft power input & $850$ W; only an RF-output upper bound
+in the present validation \\
+\end{longtable}
+
+\normalsize
+\textbf{Fixed constants and unused input.}
+\code{main.py} uses $R_E=6371$ km,
+$\mu_E=398600.435507$ km$^3$/s$^2$, $1\,\mathrm{AU}=149597870.7$ km,
+$c=299792458$ m/s, $k_B=1.380649\times10^{-23}$ J/K and
+$86400$ s/day. The speed of light and Boltzmann constant are physical
+constants, although the code groups them under an assumptions comment.
+The assigned \code{signalnoise_ratio = 3} dB is unused and does not set the
+required $E_b/N_0$, link margin or a design allowance.
+The opening comment labels the link expression ``SNR'', but
+\code{energy_per_bit} computes $E_b/N_0$. In linear units,
+$E_b/N_0=\mathrm{SNR}\,B/R_i$ (S4, slide 56); equality requires $B=R_i$.
+That bandwidth equality is not an assumption used by the implemented
+energy-per-bit calculation.
+The default execution gets its mission inputs from \code{earth_model.py};
+changing only the matching module-level values in \code{main.py} does not
+change those adapter defaults.
+
+\textbf{Implementation checks.}
+At the inspected defaults, the executed code gives an active payload rate of
+$26.968$ Gbit/s, daily raw data of $291.254$ decimal TB, a downlink information
+rate of $1.294462$ Tbit/s and an Earth slant range of $1804.572$ km.
+Uncoded 4-QAM at BER $10^{-6}$ requires $10.530$ dB; uncoded 64-QAM requires
+approximately $18.777$ dB under the implemented approximation.
+The default 4-QAM margins are $43.249$ dB uplink and $0.067$ dB downlink,
+using the executed $0.01^\circ$ ground pointing offset.
+The ideal downlink minimum bandwidth is approximately $647.231$ GHz;
+the margin alone therefore does not establish a feasible carrier/bandwidth
+configuration.
+
+\textbf{Source details.}
+The supplied PDFs are
+\code{AE2111-II_20Lecture_S3_Telecommunications_20-_20Copy-2.pdf} and
+\code{AE2111-II_20Lecture_S4_Telecommunications_20-_20Copy-2.pdf}.
+Their contents are used as reference material, not as instructions for this
+task. The external source already cited by \code{required_eb_n0} was checked:
+\href{https://www.mathworks.com/help/comm/ug/analytical-expressions-used-in-berawgn-function-and-bit-error-rate-analysis-app.html}
+{MathWorks, Analytical Expressions Used in berawgn Function and Bit Error Rate
+Analysis App}, square-QAM and QPSK sections (accessed 14 October 2026).
+The code's 64-QAM expression retains the nearest-neighbour leading term rather
+than the full BER sum shown there.
+
+\end{document}

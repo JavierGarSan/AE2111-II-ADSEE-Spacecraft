@@ -263,6 +263,24 @@ class EarthCaseTests(unittest.TestCase):
                     self.assertNotEqual(selected["payload"]["active_rate_bps"], baseline["payload"]["active_rate_bps"])
                 json.dumps(selected, allow_nan=False)
 
+    def test_remote_orbit_altitude_changes_range_and_uplink_margin(self):
+        for planet in ("moon", "mars", "mercury"):
+            with self.subTest(planet=planet):
+                lower = calculate_scenario({
+                    "planet": planet, "orbit_altitude_km": 400,
+                    "elongation_angle_deg": 45,
+                })
+                higher = calculate_scenario({
+                    "planet": planet, "orbit_altitude_km": 900,
+                    "elongation_angle_deg": 45,
+                })
+                self.assertGreater(higher["geometry"]["slant_range_km"],
+                                   lower["geometry"]["slant_range_km"])
+                self.assertGreater(higher["uplink"]["free_space_loss_db"],
+                                   lower["uplink"]["free_space_loss_db"])
+                self.assertLess(higher["uplink"]["margin_db"],
+                                lower["uplink"]["margin_db"])
+
     def test_elongation_changes_interplanetary_range_without_setting_inputs(self):
         for planet in ("mars", "venus", "mercury"):
             with self.subTest(planet=planet):

@@ -1,0 +1,45 @@
+%% Fixed positions keep the upper and lower halves left to right.
+block-beta
+    columns 8
+    space:3 EARTH["Calculate<br/>Earth-orbit<br/>range"] space:4
+    space:3 MOON["Calculate<br/>Earth–Moon<br/>range"] space:4
+    INPUT["Dashboard<br/>Input"] CHECK["Check<br/>inputs"] BODY{"Orbiting<br/>body?"} MARS["Mars orbit"] PLANET["Calculate<br/>Earth–planet<br/>range"] IMAGING["Calculate data<br/>generated<br/>by imaging"] RATE["Determine required<br/>downlink data rate<br/>through BER calculation"] SIGNAL["Calculate uplink<br/>and downlink<br/>signal to noise ratio"]
+    space:3 MERCURY["Mercury orbit"] space:4
+
+    LEFT((" ")) space:6 RIGHT((" "))
+
+    space QAM4["Determine 4-QAM<br/>requirements<br/>and apply gain"] space UNCODED["Determine uncoded<br/>link requirements"] space:4
+    MOD{"Modulation?"} space ENCODING{"Encoding?"} space MARGINS["Calculate<br/>link margins"] BANDWIDTH["Determine transmitted<br/>data rates<br/>and bandwidth"] RESULTS["Dashboard<br/>Results"] space
+    space QAM64["Determine 64-QAM<br/>requirements<br/>and apply gain"] space LDPC["Determine LDPC<br/>link requirements<br/>and apply gain"] space:4
+
+    INPUT --> CHECK
+    CHECK --> BODY
+    BODY -- "Earth" --> EARTH
+    BODY -- "Moon" --> MOON
+    BODY -- "Mars" --> MARS
+    BODY -- "Mercury" --> MERCURY
+    MARS --> PLANET
+    MERCURY --> PLANET
+    EARTH --> IMAGING
+    MOON --> IMAGING
+    PLANET --> IMAGING
+    IMAGING --> RATE
+    RATE --> SIGNAL
+
+    SIGNAL --- RIGHT
+    RIGHT --- LEFT
+    LEFT --> MOD
+
+    MOD -- "4-QAM" --> QAM4
+    MOD -- "64-QAM" --> QAM64
+    QAM4 --> ENCODING
+    QAM64 --> ENCODING
+    ENCODING -- "Uncoded" --> UNCODED
+    ENCODING -- "LDPC" --> LDPC
+    UNCODED --> MARGINS
+    LDPC --> MARGINS
+    MARGINS --> BANDWIDTH
+    BANDWIDTH --> RESULTS
+
+    style LEFT fill:none,stroke:none
+    style RIGHT fill:none,stroke:none
