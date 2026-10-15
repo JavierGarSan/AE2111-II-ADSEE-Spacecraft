@@ -282,7 +282,7 @@ class EarthCaseTests(unittest.TestCase):
                                 lower["uplink"]["margin_db"])
 
     def test_elongation_changes_interplanetary_range_without_setting_inputs(self):
-        for planet in ("mars", "venus", "mercury"):
+        for planet in ("mars", "mercury"):
             with self.subTest(planet=planet):
                 unspecified = calculate_scenario({"planet": planet})
                 closest = calculate_scenario({"planet": planet, "elongation_angle_deg": 0})
@@ -294,7 +294,7 @@ class EarthCaseTests(unittest.TestCase):
                 self.assertGreater(closest["downlink"]["margin_db"], farthest["downlink"]["margin_db"])
 
     def test_all_planet_modulation_encoding_combinations_are_serializable(self):
-        self.assertEqual({entry["id"] for entry in PLANET_OPTIONS}, {"earth", "moon", "mars", "venus", "mercury"})
+        self.assertEqual({entry["id"] for entry in PLANET_OPTIONS}, {"earth", "moon", "mars", "mercury"})
         self.assertEqual(set(ENCODING_OPTIONS), {"uncoded", "ldpc"})
         for planet in PLANET_OPTIONS:
             for modulation in MODULATION_OPTIONS:
@@ -493,7 +493,7 @@ class DashboardApiTests(unittest.TestCase):
             {"coding": "reed-solomon"}, {"coding": None},
             {"coding": "coded"},
             {"coding": 1}, {"coding": ["coded"]},
-            {"planet": "jupiter"}, {"planet": None},
+            {"planet": "jupiter"}, {"planet": "venus"}, {"planet": None},
             {"planet": 1}, {"planet": ["moon"]},
             {"payload_bits_per_pixel": 32.5},
             {"payload_duty_cycle_percent": -1},

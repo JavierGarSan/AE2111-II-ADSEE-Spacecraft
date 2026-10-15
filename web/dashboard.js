@@ -5,7 +5,6 @@ const statusText = document.querySelector("#status");
 const errorText = document.querySelector("#error");
 const resetButton = document.querySelector("#reset");
 const modulationSelector = document.querySelector("#modulation");
-const encodingSelector = document.querySelector("#encoding");
 const planetSelector = document.querySelector("#planet");
 const templateSelector = document.querySelector("#templates");
 let defaultModulation;
@@ -102,7 +101,6 @@ function applyTemplate(template) {
   locks = { ...template.locks };
   planetSelector.value = values.planet;
   modulationSelector.value = values.modulation;
-  encodingSelector.value = values.coding;
   createControls();
   updatePlanetHeading();
   updateTemplateSelection();
@@ -175,7 +173,6 @@ function createControls() {
     slider.addEventListener("input", () => {
       values[parameter.id] = parameter.choices ? parameter.choices[Number(slider.value)] : Number(slider.value);
       setOutput(parameter);
-      if (parameter.id === "coding") encodingSelector.value = values.coding;
       if (["spacecraft_power_w", "spacecraft_transmitter_power_w"].includes(parameter.id)) updatePowerBounds();
       updateTemplateSelection();
       scheduleRecalculation();
@@ -210,7 +207,7 @@ function displayResults(result) {
   document.querySelector("#active-rate").textContent = `Active camera: ${numberText(result.payload.active_rate_bps)} bit/s`;
   const body = result.planet_label || selectedPlanetLabel();
   const elevation = result.scenario === "earth" ? ` at ${numberText(result.geometry.minimum_elevation_deg)} deg minimum elevation` : "";
-  const elongation = ["mars", "venus", "mercury"].includes(result.scenario) ? ` Elongation: ${numberText(result.geometry.effective_elongation_deg)} deg.` : "";
+  const elongation = ["mars", "mercury"].includes(result.scenario) ? ` Elongation: ${numberText(result.geometry.effective_elongation_deg)} deg.` : "";
   document.querySelector("#geometry").textContent = `${body} orbit. Ground-station range: ${numberText(result.geometry.slant_range_km, 2)} km${elevation}.${elongation} Ground pixel size: ${numberText(result.payload.ground_pixel_size_m, 2)} m. Payload scan speed: ${numberText(result.payload.scan_speed_m_s, 2)} m/s (orbital-speed approximation).`;
 
   const rows = [
@@ -259,14 +256,6 @@ function displayResults(result) {
     item.textContent = text;
     assumptions.append(item);
   }
-  const warnings = document.querySelector("#model-warnings");
-  warnings.replaceChildren();
-  for (const text of result.warnings) {
-    const item = document.createElement("li");
-    item.textContent = text;
-    warnings.append(item);
-  }
-  document.querySelector("#model-notes").hidden = result.warnings.length === 0;
 }
 
 function displayError(error) {
@@ -303,13 +292,6 @@ modulationSelector.addEventListener("change", () => {
   scheduleRecalculation();
 });
 
-encodingSelector.addEventListener("change", () => {
-  values.coding = encodingSelector.value;
-  setSliderValue(parameters.find(parameter => parameter.id === "coding"));
-  updateTemplateSelection();
-  scheduleRecalculation();
-});
-
 planetSelector.addEventListener("change", () => {
   values.planet = planetSelector.value;
   updatePlanetHeading();
@@ -333,7 +315,6 @@ resetButton.addEventListener("click", () => {
   values.coding = baselineTemplate?.values.coding ?? defaultEncoding;
   locks = baselineTemplate ? { ...baselineTemplate.locks } : Object.fromEntries(parameters.map(parameter => [parameter.id, parameter.locked]));
   modulationSelector.value = defaultModulation;
-  encodingSelector.value = values.coding;
   createControls();
   updateTemplateSelection();
   statusText.textContent = "Recalculating default inputs...";
@@ -369,14 +350,6 @@ async function initialize() {
       modulationSelector.append(option);
     }
     modulationSelector.value = defaultModulation;
-    encodingSelector.replaceChildren();
-    for (const encoding of config.encodings) {
-      const option = document.createElement("option");
-      option.value = encoding;
-      option.textContent = encodingText(encoding);
-      encodingSelector.append(option);
-    }
-    encodingSelector.value = defaultEncoding;
     planetSelector.replaceChildren();
     for (const planet of planets) {
       const option = document.createElement("option");
@@ -393,7 +366,6 @@ async function initialize() {
     applyTemplate(templates.find(template => template.id === config.default_template));
     resetButton.disabled = false;
     modulationSelector.disabled = false;
-    encodingSelector.disabled = false;
     planetSelector.disabled = false;
     templateSelector.disabled = false;
     await recalculate();

@@ -86,7 +86,6 @@ PLANET_OPTIONS = [
     {"id": "earth", "label": "Earth"},
     {"id": "moon", "label": "Moon"},
     {"id": "mars", "label": "Mars"},
-    {"id": "venus", "label": "Venus"},
     {"id": "mercury", "label": "Mercury"},
 ]
 
@@ -148,7 +147,6 @@ MISSION_TEMPLATES = [
 # https://ssd.jpl.nasa.gov/planets/phys_par.html
 # https://science.nasa.gov/moon/facts/
 # https://science.nasa.gov/mars/facts/
-# https://science.nasa.gov/venus/venus-facts/
 # Remote ranges use rounded mean distances, rather than live ephemerides.
 PLANET_CONSTANTS = {
     "earth": {"radius_km": model.earthRadius, "mu_km3_s2": model.earth_mu},
@@ -156,8 +154,6 @@ PLANET_CONSTANTS = {
              "earth_distance_km": 384400.0},
     "mars": {"radius_km": 3389.5, "mu_km3_s2": 42828.375816,
              "sun_distance_km": 228000000.0},
-    "venus": {"radius_km": 6051.8, "mu_km3_s2": 324858.592000,
-              "sun_distance_km": 108000000.0},
     "mercury": {"radius_km": model.mercury_radius, "mu_km3_s2": 22031.868551,
                 "sun_distance_km": model.mercury_orbit_altitude},
 }
@@ -168,7 +164,8 @@ ASSUMPTIONS = [
     "assignment. Pixels per line use the angular swath/pixel ratio.",
     "Minimum ground-station elevation: 20 degrees.",
     "Parabolic antenna radiation efficiency: 0.6 for both antennas.",
-    "Antenna noise temperature: spacecraft 290 K; ground station 100 K.",
+    f"Antenna noise temperature: spacecraft {SPACECRAFT_ANTENNA_NOISE_K:g} K; "
+    f"ground station {GROUND_ANTENNA_NOISE_K:g} K.",
     "Receiver noise figure: 2 dB for both receivers; cable and reference "
     "temperatures: 290 K.",
     "Ground-station pointing offset: 0 degrees; spacecraft pointing offset "
@@ -203,7 +200,7 @@ def validate_inputs(overrides=None):
         raise ValueError("Modulation must be '4-QAM' or '64-QAM'.")
     planet = overrides.get("planet", DEFAULT_PLANET)
     if not isinstance(planet, str) or planet not in PLANET_CONSTANTS:
-        raise ValueError("Planet must be 'earth', 'moon', 'mars', 'venus', or 'mercury'.")
+        raise ValueError("Planet must be 'earth', 'moon', 'mars', or 'mercury'.")
     result = {"modulation": modulation, "planet": planet}
     for identifier, entry in parameters.items():
         value = overrides.get(identifier, entry["default"])
@@ -355,28 +352,15 @@ def _range_geometry(inputs):
         }
     elongation = inputs["elongation_angle_deg"]
     effective_elongation = 180.0 if elongation is None else elongation
-    if planet in ("mars", "mercury"):
-        return {
-            "slant_range_km": model.distance_other_orbit(
-                planet, inputs["orbit_altitude_km"],
-                math.radians(MINIMUM_ELEVATION_DEG),
-                math.radians(effective_elongation),
-            ),
-            "range_method": "Earth-station to planetary orbit; tangent-geometry approximation at 20-degree elevation",
-            "effective_elongation_deg": effective_elongation,
-        }
-    # Venus is a custom body not supported by main.py's range helper.
-    sun_distance_km = PLANET_CONSTANTS[planet]["sun_distance_km"]
     # The case table's angle is between spacecraft-Sun and Earth-Sun lines:
     # it is the central angle at the Sun, not apparent elongation at Earth.
-    centre_distance_km = math.sqrt(
-        model.AU**2 + sun_distance_km**2
-        - 2 * model.AU * sun_distance_km
-        * math.cos(math.radians(effective_elongation))
-    )
     return {
-        "slant_range_km": centre_distance_km,
-        "range_method": "Circular heliocentric orbits; Earth-body centre distance approximation",
+        "slant_range_km": model.distance_other_orbit(
+            planet, inputs["orbit_altitude_km"],
+            math.radians(MINIMUM_ELEVATION_DEG),
+            math.radians(effective_elongation),
+        ),
+        "range_method": "Earth-station to planetary orbit; tangent-geometry approximation at 20-degree elevation",
         "effective_elongation_deg": effective_elongation,
     }
 
@@ -425,7 +409,7 @@ def calculate_scenario(overrides=None):
             "position, body occultation, solar conjunction and contact "
             "availability are not calculated."
         )
-    if planet in ("mars", "venus", "mercury") and inputs["elongation_angle_deg"] is None:
+    if planet in ("mars", "mercury") and inputs["elongation_angle_deg"] is None:
         warnings.append(
             "Elongation is unset. The range calculation uses a conservative "
             "180-degree angle at the Sun without changing the input. Unlock "
@@ -497,9 +481,8 @@ def calculate_scenario(overrides=None):
             "Planet radii: https://ssd.jpl.nasa.gov/planets/phys_par.html. "
             "Rounded lunar radius and distance: https://science.nasa.gov/moon/facts/.",
             "Circular heliocentric orbit radii are rounded mean distances: "
-            "Earth 1 AU, Mars 228 million km and Venus 108 million km. "
-            "Sources: https://science.nasa.gov/mars/facts/ and "
-            "https://science.nasa.gov/venus/venus-facts/. The elongation input "
+            "Earth 1 AU and Mars 228 million km. "
+            "Source: https://science.nasa.gov/mars/facts/. The elongation input "
             "is the angle at the Sun between Earth-Sun and spacecraft-Sun lines.",
             *(["Mercury retains the original model's 2440.5 km radius and "
                "46 million km perihelion distance for the simplified range. "
